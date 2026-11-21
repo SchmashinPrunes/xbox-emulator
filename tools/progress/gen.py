@@ -52,13 +52,13 @@ IMPORT_EVIDENCE = ["media.json", "gameinput_ext.json", "chatprobe.json"]
 GREEN, AMBER, GREY, BG = "#2ea043", "#d29922", "#6e7681", "#0d1117"
 COL = {"done": GREEN, "partial": AMBER, "none": GREY}
 XCOL = {"implemented": "#2ea043", "forwarded": "#388bfd", "hooked": "#a371f7", "pc": "#2f8f83",
-        "title": "#56b6c2", "stub": "#d29922", "unverified": "#3d444d", "missing": "#6e7681"}
-XORDER = ["implemented", "forwarded", "hooked", "pc", "title", "stub", "unverified", "missing"]
+        "title": "#56b6c2", "pending": "#e3b341", "stub": "#d29922", "unverified": "#3d444d", "missing": "#6e7681"}
+XORDER = ["implemented", "forwarded", "hooked", "pc", "title", "pending", "stub", "unverified", "missing"]
 COVERED = {"implemented", "forwarded", "hooked", "pc", "title"}
 PC_SUPPLEMENT = {"kernel32.dll", "advapi32.dll", "ntdll.dll", "kernelbase.dll", "shcore.dll", "ole32.dll"}
 LABEL = {"implemented": "implemented in emulator", "forwarded": "forwarded by emulator to PC",
          "hooked": "PC system DLL, hooked by emulator", "pc": "PC system DLL (name match)",
-         "title": "shipped with the title", "stub": "emulator stub", "unverified": "unverified",
+         "title": "shipped with the title", "pending": "implemented, awaiting verification", "stub": "emulator stub", "unverified": "unverified",
          "missing": "missing"}
 TOMBOX = "https://github.com/drycheetah84/TomBox/blob/master/"
 
@@ -111,6 +111,7 @@ def instructions():
         n, u, ok = line.split()
         used[n] = (int(u), int(ok))
     verified = set(cfg.get("rdna2_verified", {}).get("mnemonics", []))
+    pending = set(cfg.get("rdna2_pending", {}).get("mnemonics", [])) - verified
     groups, seen = {}, set()
     for g, names in jload("mnem_groups.json"):
         for n in names:
@@ -118,6 +119,9 @@ def instructions():
             u, ok = used.get(n, (0, 0))
             if n in verified and u == ok:
                 groups.setdefault(g, []).append("done")
+                continue
+            if n in pending:
+                groups.setdefault(g, []).append("partial")
                 continue
             groups.setdefault(g, []).append("done" if u and u == ok else "partial" if u else "none")
     for n, (u, ok) in used.items():
@@ -225,6 +229,7 @@ def console(full=False, twins=True):
             if fwd is None and n in by_func and n not in host:
                 host[n] = lib.lower()
     libs = {}
+    cpend = {k.lower(): set(v) for k, v in cfg.get("console_pending", {}).items()}
     for lib, v in con.items():
         low = lib.lower()
         rows, notes = [], {}
@@ -249,6 +254,8 @@ def console(full=False, twins=True):
                             else f"name match on the PC twin {tw}; the console {lib} is not emulated, the title's API-set import resolves to the PC DLL")
             else:
                 st = "missing"
+            if n in cpend.get(low, ()) and st in COVERED:
+                st = "pending"
             rows.append((n, st, frozenset(users), tuple(pres)))
         if not rows:
             continue
