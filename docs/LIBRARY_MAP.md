@@ -26,12 +26,12 @@ Upstream's metric set (same definitions as upstream `tools/progress/gen.py`, For
 |---|---|---|---|
 | system_functions | 671 | 671 | 100.0 |
 | d3d12x_methods | 194 | 200 | 97.0 |
-| rdna2_instructions | 676 | 721 | 93.76 |
+| rdna2_instructions | 676 | 779 | 86.78 |
 | shaders_translated | 105506 | 105506 | 100.0 |
 | shader_stages | 6 | 8 | 75.0 |
 | milestones | 9 | 18 | 50.0 |
 | titles_examined | 5 | - | - |
-| console_exports | 2076 | 2141 | 96.96 |
+| console_exports | 2077 | 2141 | 97.01 |
 | shader_compile_lobby_frame | 139 | 139 | 100.0 |
 | shader_compile_fixtures | 25 | 25 | 100.0 |
 | shader_compile_full_sweep | not published | 105506 | - |
@@ -40,8 +40,8 @@ Upstream's metric set (same definitions as upstream `tools/progress/gen.py`, For
 | title_imports_XDefiant | 29 | 29 | 100.0 |
 | title_imports_Terraria | 25 | 25 | 100.0 |
 | title_imports_Trackmania | 18 | 18 | 100.0 |
-| console_exports_targeted | 2076 | 2134 | 97.28 |
-| console_exports_not_targeted | not published | 7 | - |
+| console_exports_targeted | 2077 | 2135 | 97.28 |
+| console_exports_not_targeted | not published | 6 | - |
 
 Shader compile: all 139 shaders of the lobby frame compile with DXC (TomBox `docs/DEVELOPMENT_LOG.md:894`); 25/25 fixtures compile (`:672`). The full-library compile sweep (`:706`) has no published final count, so no compile badge is shown.
 
@@ -294,7 +294,7 @@ Listed: imports from Xbox console libraries only. Not listed: 2594 imports a PC 
 | `XFrontPanelGetLightStates` | implemented | [crates/compat/xfrontpaneldisplay/src/lib.rs](https://github.com/drycheetah84/TomBox/blob/master/crates/compat/xfrontpaneldisplay/src/lib.rs) (returns the 5 light bits last set) |
 | `XFrontPanelSetLightStates` | implemented | [crates/compat/xfrontpaneldisplay/src/lib.rs](https://github.com/drycheetah84/TomBox/blob/master/crates/compat/xfrontpaneldisplay/src/lib.rs) (keeps lights & 0x1f, drawn under the panel, changes logged) |
 | `XFrontPanelGetButtonStates` | implemented | [crates/compat/xfrontpaneldisplay/src/lib.rs](https://github.com/drycheetah84/TomBox/blob/master/crates/compat/xfrontpaneldisplay/src/lib.rs) (emulated panel buttons (F1-F5 = buttons 1-5, arrows, Enter = select while the panel window has focus)) |
-| `XFrontPanelIsSupported` | implemented | [crates/compat/xfrontpaneldisplay/src/lib.rs](https://github.com/drycheetah84/TomBox/blob/master/crates/compat/xfrontpaneldisplay/src/lib.rs) (true: the panel is emulated) |
+| `XFrontPanelIsSupported` | implemented | [crates/compat/xfrontpaneldisplay/src/lib.rs](https://github.com/drycheetah84/TomBox/blob/master/crates/compat/xfrontpaneldisplay/src/lib.rs) (console 0x1220: SUCCEEDED(XFP_GC!XfpTryConnect()); here the compat xfp_gc.dll XfpTryConnect, so true only when its XFP pipe connects and grants) |
 
 </details>
 
@@ -458,7 +458,7 @@ Console-related exports of the DLLs in each title's EmbeddedXvd `Windows\System3
 | RemoteWinRT.dll | System32 | no | 15 | 15 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | sc_dll.dll | System32 | no | 67 | 22 | 45 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 2020.11015.12200.10000; XDefiant 2206.2209.12105.11142; Terraria 2206.2209.12105.11142; Trackmania 2210.2210.12006.15549 |
 | scdxil.dll | System32 | no | 7 | 4 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 2020.11015.12200.10000; XDefiant 2206.2209.12105.11142; Terraria 2206.2209.12105.11142; Trackmania 2210.2210.12006.15549 |
-| sechost.dll | System32 | yes | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| sechost.dll | System32 | yes | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | secur32.dll | System32 | yes | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | SHCore.dll | System32 | yes | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | symsrv.dll | System32 | no | 32 | 29 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.10504.1003; XDefiant 10.0.10504.1003; Terraria 10.0.10504.1003; Trackmania 10.0.10504.1003 |
@@ -501,7 +501,7 @@ Console-related exports of the DLLs in each title's EmbeddedXvd `Windows\System3
 
 ### Not targeted (no analysed title references them)
 
-The console-library total above (2141 exports in 109 libraries) keeps every console-only export in the denominator, including devkit, tools and OS service DLLs that no analysed title imports. 104 libraries (2134 exports) are imported by at least one title, directly or through API-set host attribution, or are emulator-provided; the 5 below (7 exports) are not targeted: no title EXE or shipped DLL imports any of their exports and the emulator does not provide them. They stay `missing` in the headline instead of being dropped from it, so the percentage is not inflated; a library moves out of this list as soon as a title imports it or an emulator crate exports it. The earlier Xbox-only figure (2064 exports) counted only DLLs with no same-named PC DLL and is kept in `summary.json` under `all_including_pc`. Coverage inside the 104 targeted libraries alone: 2076/2134.
+The console-library total above (2141 exports in 109 libraries) keeps every console-only export in the denominator, including devkit, tools and OS service DLLs that no analysed title imports. 105 libraries (2135 exports) are imported by at least one title, directly or through API-set host attribution, or are emulator-provided; the 4 below (6 exports) are not targeted: no title EXE or shipped DLL imports any of their exports and the emulator does not provide them. They stay `missing` in the headline instead of being dropped from it, so the percentage is not inflated; a library moves out of this list as soon as a title imports it or an emulator crate exports it. The earlier Xbox-only figure (2064 exports) counted only DLLs with no same-named PC DLL and is kept in `summary.json` under `all_including_pc`. Coverage inside the 105 targeted libraries alone: 2077/2135.
 
 | Library | Folder | Same-named PC DLL | Console-only exports | Present in |
 |---|---|---|---|---|
@@ -509,7 +509,6 @@ The console-library total above (2141 exports in 109 libraries) keeps every cons
 | xtfremoterun.dll | System32 | no | 2 | Fortnite, XDefiant, Terraria, Trackmania |
 | ConIoSrv.dll | System32 | no | 1 | Fortnite, XDefiant, Terraria, Trackmania |
 | EventAggregation.dll | System32 | yes | 1 | Fortnite, XDefiant, Terraria, Trackmania |
-| sechost.dll | System32 | yes | 1 | Fortnite, XDefiant, Terraria, Trackmania |
 
 ### Evidence files
 
@@ -717,7 +716,7 @@ Newer console OS builds add exports; each is its own item in the map and stays `
 
 | Function | Present in | Status |
 |---|---|---|
-| `EtwQueryRealtimeConsumer` | Fortnite | missing |
+| `EtwQueryRealtimeConsumer` | Fortnite | implemented |
 
 </details>
 
@@ -2784,11 +2783,11 @@ No PC DLL is named minuserx.dll; it is emulated by its compat crate, so no row i
 
 </details>
 
-<details><summary><b>sechost.dll</b>: 1 console-only exports, 0 covered</summary>
+<details><summary><b>sechost.dll</b>: 1 console-only exports, 1 covered</summary>
 
 | Function | Status | Imported by | Present in |
 |---|---|---|---|
-| `EtwQueryRealtimeConsumer` | missing |  | Fortnite |
+| `EtwQueryRealtimeConsumer` | implemented |  | Fortnite |
 
 </details>
 

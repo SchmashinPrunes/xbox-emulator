@@ -2203,6 +2203,21 @@
    "SCDxil_SCSimpleCompileShader": "console scdxil.dll DXIL to Durango GCN back end (newbe.dll); console returns 0 ok, 4 unsupported stage, 1 on exception; no console module -> 1"
   }
  },
+ "sechost.dll": {
+  "file": "crates/compat/sechost/src/lib.rs",
+  "functions": {
+   "CloseTrace": "hooked",
+   "EtwQueryRealtimeConsumer": "implemented",
+   "OpenTraceW": "hooked",
+   "ProcessTrace": "hooked"
+  },
+  "notes": {
+   "CloseTrace": "PC CloseTrace (via System32 advapi32) wrapped with the console sechost 0xba40/0xb9ac consumer-table rules: handle 0 or INVALID_PROCESSTRACE_HANDLE returns ERROR_INVALID_HANDLE 6; a table entry in ProcessTrace (state 1) becomes state 2, the PC consumer is closed and ERROR_CTX_CLOSE_PENDING 7007 is returned; state 2 returns 6; an idle entry is unlinked and the PC CloseTrace result returned; handles not in the table go straight to the PC",
+   "EtwQueryRealtimeConsumer": "port of console sechost 0x4ad40: handle 0 or INVALID_PROCESSTRACE_HANDLE (handle-1 above -3 unsigned) returns ERROR_INVALID_HANDLE 6 before any pointer check; NULL EventsLost or BuffersLost out returns ERROR_INVALID_PARAMETER 87; under the consumer-table lock (0x4a878/0xb97c list walk on the handle at ctx+0x10) a missing entry or an entry whose ProcessTraceMode (ctx+0x6c, copied from EVENT_TRACE_LOGFILEW+0x1c at OpenTraceW) lacks PROCESS_TRACE_MODE_REAL_TIME 0x100 returns 6, else writes ctx+0x288 and ctx+0x28c and returns 0; those two counters are the ETW_REALTIME_CONSUMER EventsLostCount/BuffersLostCount pointers the console hands to NtTraceControl in ProcessTrace's realtime connect (0xa090; member order per Geoff Chappell's ETW_REALTIME_CONSUMER notes), zero from OpenTraceW until then; the emulated table is filled by the OpenTraceW hook here, but realtime delivery stays in the PC ProcessTrace, whose kernel connection updates the PC sechost's own counters, so the emulated counters stay at their OpenTraceW value of 0 even when the host kernel drops events",
+   "OpenTraceW": "PC OpenTraceW (via System32 advapi32) opens the consumer so PC ProcessTrace can deliver events; each successful open is registered in the emulated console consumer table (console sechost 0xb1c8: list append under the table lock, state 0, counters 0) under the returned handle with the caller's ProcessTraceMode read before the call, the way console OpenTraceW is the only creator of table entries",
+   "ProcessTrace": "PC ProcessTrace wrapped with console sechost 0xb6e0 table rules: every table entry named must be idle, otherwise ERROR_INVALID_HANDLE 6 with no processing and the entries marked so far restored; entries go to state 1 for the call and back to 0 afterwards, and entries a CloseTrace moved to state 2 are freed when it returns; handles not in the table are passed through unmarked"
+  }
+ },
  "secur32.dll": {
   "file": "crates/compat/secur32/src/lib.rs",
   "functions": {
@@ -3193,7 +3208,7 @@
    "XFrontPanelGetLightStates": "returns the 5 light bits last set",
    "XFrontPanelGetScreenDimensions": "64 x 256, E_INVALIDARG on null (matches console)",
    "XFrontPanelGetScreenPixelFormat": "DXGI_FORMAT_R8_UNORM (0x3d) as on console",
-   "XFrontPanelIsSupported": "true: the panel is emulated",
+   "XFrontPanelIsSupported": "console 0x1220: SUCCEEDED(XFP_GC!XfpTryConnect()); here the compat xfp_gc.dll XfpTryConnect, so true only when its XFP pipe connects and grants",
    "XFrontPanelPresentBuffer": "console validation (size 0x4000 else E_INVALIDARG, null E_POINTER); frame kept and drawn in a 768x192 panel window (TOMBOX_FRONTPANEL=0 hides it)",
    "XFrontPanelSetDisplayName": "E_INVALIDARG on null as on console; name logged and shown in the panel window title",
    "XFrontPanelSetLightStates": "keeps lights & 0x1f, drawn under the panel, changes logged"

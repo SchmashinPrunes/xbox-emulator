@@ -646,3 +646,17 @@ elease`, the log shows one install and every interface is emulated.
 - XVMAudioService.dll DllGetClassObject (ordinal 3) is missing. It serves 4 WRL classes (148ec3bf-349c-4eac-b373-9fd57cb46d88, e782ced1-3b5d-43aa-a45d-82852b57d84c, 7f34f6c9-bed0-456d-9772-0d5b524a9d69, b988be16-d129-46fc-8c5a-c3ceff592137). Their objects use \.\VirtualAudioBus IOCTLs (the type-2 0x100000 region that acphal slot 10 also requests), the acpi_hal Logan device, \Device\xvcmgmt, WNF state and the XboxSystem job object. The region emulation needs those classes to be ported first.
 - chad.dll XDspSubmitCommandWithEnvelope: the DSP microcode that consumes the envelope is not in any dump, so the per-partition gain is inferred from the GDK description. See the chad exports.txt note for the known differences from the console's 8-float snapshot.
 - xmem/acphal test race: gcxaudioext tests crash with 0xc0000005 when the first ApuAlloc (xmem.dll + acphal.dll) runs at the same time as MMDevice COM enumeration on another thread. Loading the DLLs alone does not crash. The suspected cause is xmem IAT patching (iat.rs write_slot sets PAGE_READWRITE) racing live modules. The gcxaudioext tests are serialized to avoid it, and the root cause is not fixed.
+
+## RDNA2 GDS wave ops (tombox-xshader hlsl/gds.rs) - 2026-11-21, rdna2-dev
+- DONE, ds_append / ds_consume (GDS form): the lowering is now wave-uniform. It follows amdgpu_isa_rdna2.xml (AMD_GPU_MR_ISA_XML-2024_08_22), which says to add (or subtract) count_bits(exec_mask) at M0.base + offset and return the pre-operation value.
+  - How it works: one active lane per host wave does the InterlockedAdd, and WaveReadLaneAt broadcasts the result.
+  - The old lowering added 1 per lane, which gave each lane a different value.
+  - Test: tests/exec.rs exec_mem::gds::ds_gds_append_consume, with four exec masks.
+    - On WARP it checks the counter total, that inactive lanes are untouched, and that no other GDS dword changes.
+    - With TOMBOX_EXEC_HW=1 on the RTX 5060 (wave32) it also checks the per-wave return values.
+  - Limits: a wave64 source is refused, because it spans two host waves. The LDS (GDS=0) form is not lowered.
+- OPEN, ds_gws_init / ds_gws_sema_v / ds_gws_sema_br / ds_gws_sema_p / ds_gws_sema_release_all / ds_gws_barrier: these remain translator refusals.
+  - The XML describes them as GWS resources that queue the wave until a semaphore release or a barrier count is reached, across waves and thread groups.
+  - D3D12 has no cross-group blocking primitive and no forward-progress guarantee for spin waits, so a lowering could hang or would only appear to work.
+  - No title shader uses them (mnemonics.txt: 0 uses).
+- OPEN, ds_ordered_count: remains a translator refusal. The XML says it adds count_bits(exec) to one of 4 dedicated ordered-count packers in wave-launch order. D3D12 does not expose dispatch order. Atomics would give unique slots but not ordered ones, so the result would only appear to work. 0 uses.
