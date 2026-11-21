@@ -2684,5 +2684,10 @@
   "source": "rdna2-dev batch 1 (awaiting independent verification): exec_mem::ds::ds_lds_atomics_ext, exec_mem::global::flat_global_mem, exec_mem::mtbuf::mtbuf_d16_load_formats, exec_mem::mtbuf::mtbuf_d16_store_formats on WARP",
   "mnemonics": [],
   "tests": []
+ },
+ "console_pending": {
+  "xg_xs.dll": [
+   "XGDecodeDCC"
+  ]
  }
 }

@@ -23,6 +23,8 @@ pub mod rdna2;
 pub mod gcn;
 pub mod gds_abi;
 pub mod global_abi;
+pub mod centroid_abi;
+pub mod runtime_hlsl;
 
 /// Little-endian readers with explicit bounds checks.
 fn u32_at(b: &[u8], off: usize) -> Result<u32, String> {
@@ -80,6 +82,21 @@ impl Dxbc {
     pub fn chunk(&self, fourcc: &[u8; 4]) -> Option<&Chunk> {
         self.chunks.iter().find(|c| c.fourcc == *fourcc)
     }
+}
+
+pub fn parse_root_signature(data: &[u8]) -> Result<meta::RootSig, String> {
+    let body = if data.starts_with(b"DXBC") {
+        let dxbc = Dxbc::parse(data)?;
+        let rts = dxbc.chunk(b"RTS0").ok_or("DXBC has no RTS0 chunk")?;
+        &data[rts.offset..rts.offset + rts.size]
+    } else {
+        data
+    };
+    let version = u32_at(body, 0)?;
+    if !(1..=3).contains(&version) {
+        return Err(format!("unsupported root signature version {version}"));
+    }
+    meta::parse_rts0(body)
 }
 
 /// Program type from the DXIL program header (D3D12_SHADER_VERSION_TYPE).

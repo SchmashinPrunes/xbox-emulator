@@ -32,6 +32,7 @@ mod cmdlist_validate;
 mod shader_xlat;
 mod mip_bind;
 mod present;
+mod present_snap;
 mod frame;
 mod frame_fast;
 mod perf;
@@ -61,13 +62,21 @@ mod timestamp;
 mod video_probe;
 mod xs_exports;
 mod console_slots_dev2;
+mod gpu_hw_config;
+mod kmd_slots;
 mod placed_offset;
 mod msaa_place;
 mod gpu_wait;
 mod cl_ext;
+mod dbcount;
+mod cl_fw;
 mod gds;
+pub mod centroid_bind;
 mod list_split;
 mod sys_ts;
+mod ts99;
+mod indirect_bundle;
+mod bop64;
 mod wait_probe;
 #[cfg(test)]
 mod hw_tests;
@@ -77,12 +86,27 @@ mod driver_unload_tests;
 mod title_heap;
 mod mesh_pso;
 mod console_slots_mesh;
+mod cl_console_fix;
+mod device_console_fix;
+mod pso_ext;
 mod global_bind;
 mod kmd10;
 mod dred;
+mod title_shadow;
+pub mod perfctr;
+#[cfg(test)]
+mod perfctr_tests;
+pub mod perfctr_xs;
+#[cfg(test)]
+mod perfctr_xs_tests;
+pub mod perfctr_cl;
+#[cfg(test)]
+mod perfctr_cl_hw;
 pub mod rs_xbox;
 #[cfg(test)]
 mod rs_xbox_tests;
+#[cfg(test)]
+mod slot_audit_tests;
 
 use core::ffi::c_void;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -186,6 +210,7 @@ pub extern "system" fn D3D12XboxCreateDevice(
     riid: *const c_void,
     pp_device: *mut *mut c_void,
 ) -> i32 {
+    let _ = xgs_kmd_emu::api();
     present::start_window_clamp();
     agility::select();
     enable_experimental_shader_models();

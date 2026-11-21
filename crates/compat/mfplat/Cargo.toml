@@ -2,7 +2,7 @@
 name = "mfplat"
 version = "0.1.0"
 edition = "2021"
-description = "Proxy for Xbox mfplat.dll: every PC mfplat export is a PE export forwarder to the real system mfplat (staged as mfplat_sys.dll), MFCreateDXGISurfaceBufferX forwards to MFCreateDXGISurfaceBuffer, and the console-only exports (MFResetDXGIDeviceManagerX, MFJoinIoPort, MFGetPrivateWorkqueues, MFBlockThread, MFUnblockThread, MFGetPlatform, LFGetGlobalPool) follow the console mfplat.dll decompile."
+description = "Proxy for Xbox mfplat.dll: every PC mfplat export is a PE export forwarder to the real system mfplat (staged as mfplat_sys.dll), MFCreateDXGISurfaceBufferX forwards to MFCreateDXGISurfaceBuffer, and the console-only exports (MFResetDXGIDeviceManagerX, MFJoinIoPort, MFGetPrivateWorkqueues, MFBlockThread, MFUnblockThread, LFGetGlobalPool) follow the console mfplat.dll decompile; MFGetPlatform is left unexported (see BLOCKERS.md)."
 license = "MIT OR Apache-2.0"
 build = "build.rs"
 

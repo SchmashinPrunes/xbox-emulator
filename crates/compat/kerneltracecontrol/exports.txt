@@ -1,4 +1,4 @@
-1 CreateMergedTraceFile missing | console version is a COM relogger with ~12 injected rundown sources (image id, dbgid, volume map, file version); not ported
+1 CreateMergedTraceFile missing | Fortnite console 0x1e40: flags (arg 4) mapped through the 14-entry table .data 0x2d270, then the relogger 0x44f0 (a COM relogger with about 12 injected rundown sources: ImageID, DbgID, volume map, file version), HRESULT mapped to Win32 (0x7a when the out count is nonzero, 0x507, 0x51a, facility-7 codes unwrapped); the PC has no kerneltracecontrol.dll and the rundown-source tree inside 0x44f0 is not ported; see BLOCKERS.md
 2 DllCanUnloadNow implemented | module object count; S_OK when no objects are live
 3 StartHeapTrace implemented | console extension block (group mask, pid list, stack hook ids) on the Heap provider GUID, then StartTraceW
 4 StartKernelTrace implemented | console extension block with classic-flag to group-mask map and 32-class hook ids, StartTraceW, EnableTraceEx for the system provider

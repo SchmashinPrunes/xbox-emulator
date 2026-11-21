@@ -5,8 +5,8 @@
 //! wrapped in a `ShaderExtract` with a made-up signature.
 
 use tombox_xshader::hlsl::translate;
-use tombox_xshader::meta::{RootParam, RootParamKind, RootRange, RootSig, SigElement};
-use tombox_xshader::{ShaderExtract, Stage};
+use tombox_xshader::meta::{GsInfo, MeshInfo, RootParam, RootParamKind, RootRange, RootSig, SigElement};
+use tombox_xshader::{parse_root_signature, ShaderExtract, Stage};
 
 const S_ENDPGM: u32 = 0xbf81_0000;
 const S_NOP: u32 = 0xbf80_0000;
@@ -49,6 +49,64 @@ fn shader(stage: Stage, words: &[u32], input_sig: Vec<SigElement>, output_sig: V
         gs_info: None,
         root_sig: root,
     }
+}
+
+#[test]
+fn external_root_signature_binds_a_stripped_mesh_shader() {
+    let words = [
+        0xf420_0108,
+        0xfa00_0000,
+        0xbefc_0380,
+        0xbf90_0009,
+        S_ENDPGM,
+    ];
+    let output = vec![sig("SV_Position", 1, 3, 0, 0xf)];
+    let mut ex = shader(Stage::Mesh, &words, vec![], output, None);
+    ex.gs_info = Some(GsInfo {
+        input_primitive: 0,
+        output_topology: 0,
+        max_vertex_count: 0,
+        mesh: Some(MeshInfo {
+            stage: 13,
+            groupshared_bytes: 0,
+            payload_bytes: 0,
+            max_vertices: 3,
+            max_primitives: 1,
+            prim_vectors: 0,
+            topology: 2,
+            num_threads: [32, 1, 1],
+        }),
+    });
+    let Err(error) = translate(&ex) else {
+        panic!("translation unexpectedly accepted the missing root descriptor");
+    };
+    assert!(error.contains("base s16 is not a buffer descriptor"), "{error}");
+
+    let body = [
+        2u32, 1, 24, 0, 0, 0,
+        2, 0, 36,
+        5, 2, 0,
+    ]
+    .map(u32::to_le_bytes)
+    .concat();
+    let mut wrapped = b"DXBC".to_vec();
+    wrapped.extend_from_slice(&[0; 16]);
+    for value in [1u32, 44 + body.len() as u32, 1, 36] {
+        wrapped.extend_from_slice(&value.to_le_bytes());
+    }
+    wrapped.extend_from_slice(b"RTS0");
+    wrapped.extend_from_slice(&(body.len() as u32).to_le_bytes());
+    wrapped.extend_from_slice(&body);
+    for external in [&body, &wrapped] {
+        ex.root_sig = Some(parse_root_signature(external).expect("parse external root signature"));
+        assert!(!ex.has_root_sig);
+        let translated = translate(&ex).expect("translate with external root signature");
+        assert_eq!(translated.profile, "ms_6_5");
+        assert!(translated.hlsl.contains("register(b5, space2)"), "{}", translated.hlsl);
+    }
+    assert!(parse_root_signature(&wrapped[..wrapped.len() - 1]).is_err());
+    wrapped[36..40].copy_from_slice(b"TEST");
+    assert!(parse_root_signature(&wrapped).is_err());
 }
 
 /// A pixel shader that writes the integer 5 to a `uint4` render target through the default
@@ -118,6 +176,7 @@ fn float_colour_export_follows_the_target_format() {
     assert!(t.hlsl.contains("uint tb_f16rtz(float x)"), "{}", t.hlsl);
     assert!(t.hlsl.contains("float tb_rtfmt(float x, uint k, uint c)"), "{}", t.hlsl);
     assert!(t.hlsl.contains("tb_rtfmt(asfloat(tb_pk0a), TB_RTFMT0, 0u)"), "{}", t.hlsl);
+    #[cfg(windows)]
     if tombox_xshader::dxc::available() {
         let profile = tombox_xshader::dxc::profile_for(t.profile);
         for defs in ["", "#define TB_RTFMT0 1u\n", "#define TB_RTFMT0 2u\n"] {
@@ -216,4 +275,26 @@ fn texel_type_follows_the_use_of_the_loaded_value() {
     let t = translate(&ex).expect("translate (float use)");
     assert!(t.hlsl.contains("Texture2D<float4> tex0 : register(t0);"), "{}", t.hlsl);
     assert!(t.hlsl.contains("float4 t0 = tex0.Load("), "{}", t.hlsl);
+}
+
+#[test]
+fn loops_translate_deterministically() {
+    let mut words = Vec::new();
+    for s in 0..6u32 {
+        words.extend([
+            0xbe80_0384 | s << 16,
+            0x8080_8100 | s << 16 | s,
+            0xbf07_8000 | s,
+            0xbf85_fffd,
+        ]);
+    }
+    words.push(S_ENDPGM);
+    let mut ex = shader(Stage::Compute, &words, vec![], vec![], None);
+    ex.isa_preamble = [0, 1, 1, 1];
+    (ex.has_input_sig, ex.has_output_sig) = (false, false);
+    let first = translate(&ex).expect("translate").hlsl;
+    assert_eq!(first.matches("do {").count(), 6, "{first}");
+    for _ in 0..16 {
+        assert!(translate(&ex).expect("translate").hlsl == first, "translation differs between runs");
+    }
 }

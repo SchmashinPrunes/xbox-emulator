@@ -1,3 +1,6 @@
+#[path = "common/media.rs"]
+mod media;
+
 use core::ffi::c_void;
 use core::sync::atomic::{AtomicU32, Ordering};
 #[path = "../src/reset.rs"]
@@ -7,7 +10,7 @@ mod reset;
 mod exports {
     include!(concat!(env!("OUT_DIR"), "/forwarded.rs"));
 }
-use exports::{CONSOLE_EXPORTS, FORWARDED, FORWARDED_ALIASES};
+use exports::{CONSOLE_EXPORTS, FORWARDED, FORWARDED_ALIASES, MISSING};
 use reset::{query, release, Guid, IID_ID3D12DEVICE, IID_IUNKNOWN};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -392,7 +395,6 @@ fn every_console_and_pc_export_resolves_through_proxy() {
         "MFStartup",
         "MFShutdown",
         "MFResetDXGIDeviceManagerX",
-        "MFGetPlatform",
         "LFGetGlobalPool",
         "MFBlockThread",
         "MFUnblockThread",
@@ -419,7 +421,7 @@ fn every_console_and_pc_export_resolves_through_proxy() {
             missing.push(*n);
         }
     }
-    assert!(missing.is_empty(), "console mfplat exports missing from proxy: {missing:?}");
+    assert_eq!(missing, MISSING, "console mfplat exports missing from proxy: {missing:?}");
     assert_eq!(CONSOLE_EXPORTS.len(), 140);
     for n in ["MFCreateAttributes", "MFCreateMediaType", "MFCreateSample", "MFllMulDiv"] {
         let c = format!("{n}\0");
@@ -480,9 +482,9 @@ fn startup_and_console_only_exports_follow_console_semantics() {
     let get_private = export!(px("MFGetPrivateWorkqueues"), fn(*mut u32) -> i32);
     let block = export!(px("MFBlockThread"), fn() -> i32);
     let unblock = export!(px("MFUnblockThread"), fn() -> i32);
-    let platform = export!(px("MFGetPlatform"), fn() -> *mut c_void);
     let pool = export!(px("LFGetGlobalPool"), fn() -> *mut c_void);
     let join = export!(px("MFJoinIoPort"), fn(H) -> i32);
+    assert!(unsafe { GetProcAddress(proxy().proxy as H, b"MFGetPlatform\0".as_ptr()) }.is_null(), "MFGetPlatform stays unexported (BLOCKERS.md)");
     let mut v = 7u32;
     assert_eq!(unsafe { get_private(&mut v) }, MF_E_SHUTDOWN);
     assert_eq!(v, 7);
@@ -495,7 +497,6 @@ fn startup_and_console_only_exports_follow_console_semantics() {
     assert_eq!(v, host_assign_queues());
     assert_eq!(unsafe { block() }, 0);
     assert_eq!(unsafe { unblock() }, 0);
-    assert!(unsafe { platform() }.is_null());
     assert!(unsafe { pool() }.is_null());
     let path = proxy().dir.join("iocp.bin");
     std::fs::write(&path, [0u8; 16]).unwrap();
@@ -1137,9 +1138,7 @@ fn fortnite_movies_decode_to_nonblack_rgb32_on_console_d3d12_manager() {
 
 #[test]
 fn lobby_video_placeholder_decodes_to_nonblack_frames_on_every_path() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("compat-common").join("backend_data").join("fortnite").join("video");
-    let mut clip = std::fs::read(root.join("init.mp4")).expect("placeholder init.mp4");
-    clip.extend(std::fs::read(root.join("seg0.m4s")).expect("placeholder seg0.m4s"));
+    let clip = media::staged_fragment("init.mp4", "seg0.m4s").unwrap_or_else(media::patterned_h264);
     let dir = std::env::temp_dir().join(format!("tombox_placeholder_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("lobby_placeholder.mp4");

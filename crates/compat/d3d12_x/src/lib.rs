@@ -103,6 +103,7 @@ pub extern "system" fn D3D12XboxCreateDevice(
     riid: *const c_void,
     pp_device: *mut *mut c_void,
 ) -> i32 {
+    let _ = xgs_kmd_emu::api();
     if params.is_null() {
         record(M, "D3D12XboxCreateDevice", "null parameters -> E_INVALIDARG");
         return E_INVALIDARG;

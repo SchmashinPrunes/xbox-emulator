@@ -27,7 +27,8 @@ pub fn inner_layout(ty: u32) -> Option<(usize, usize)> {
         8 => (4, 328),
         9 | 13 | 14 | 16 | 18 | 20 => (4, 4),
         10 => (4, 44),
-        11 | 21 => (4, 52),
+        11 => (4, 52),
+        21 => (4, 56),
         12 | 19 => (8, 16),
         15 => (4, 36),
         17 => (4, 8),
@@ -147,8 +148,16 @@ pub unsafe fn create_pipeline_state(real: *mut c_void, desc: *const [u64; 2], ri
         record("d3d12_xs", "CreatePipelineState", &format!("{e} -> E_INVALIDARG"));
         return E_INVALIDARG;
     }
+    let root = parse(stream).ok().and_then(|s| s.iter().find(|(t, _)| *t == 0).map(|&(_, o)| bytecode(stream, o).0)).unwrap_or(0);
     let xlat = |ty: u32, b: &[u8], (n, f): (u32, [u32; 8])| {
-        crate::shader_xlat::translate_for_targets(b.as_ptr(), b.len(), stage_rtfmt(ty, (n, f))).map_err(|e| e.to_string())
+        if ty == SUB_MS && root != 0 && crate::shader_xlat::needs_external_root_data(b) {
+            if let Some(data) = crate::console_slots_mesh::root_data(root as *mut c_void) {
+                return crate::shader_xlat::translate_mesh_with_root(b, &data).map_err(|e| e.to_string());
+            }
+        }
+        let k = stage_rtfmt(ty, (n, f));
+        let k = if ty == SUB_PS { crate::centroid_bind::tag_rtfmt(root, k) } else { k };
+        crate::shader_xlat::translate_for_targets(b.as_ptr(), b.len(), k).map_err(|e| e.to_string())
     };
     let (out, keep) = match translate_stream(stream, &xlat) {
         Ok(v) => v,
@@ -170,6 +179,9 @@ pub unsafe fn create_pipeline_state(real: *mut c_void, desc: *const [u64; 2], ri
     let hr = f(dev2, &d, riid, ppv);
     if hr >= 0 && !(*ppv).is_null() && parse(stream).is_ok_and(|s| s.iter().any(|(t, o)| *t == SUB_AS && bytecode(stream, *o).0 != 0)) {
         crate::console_slots_mesh::note_as_pso(*ppv as usize);
+    }
+    if hr >= 0 && !(*ppv).is_null() {
+        crate::dbcount::note_stream_pso(*ppv as usize, &out, &keep);
     }
     let rel: unsafe extern "system" fn(*mut c_void) -> u32 = core::mem::transmute(*vt2.add(2));
     rel(dev2);
@@ -225,6 +237,19 @@ mod tests {
         let mut v = (b.as_ptr() as u64).to_le_bytes().to_vec();
         v.extend_from_slice(&(b.len() as u64).to_le_bytes());
         v
+    }
+
+    #[test]
+    fn depth_stencil1_is_56_bytes_with_bounds_last() {
+        let mut s = Vec::new();
+        let mut ds1 = vec![0u8; 56];
+        ds1[52] = 1;
+        push(&mut s, 21, &ds1);
+        push(&mut s, 17, &[4, 0, 0, 0, 0, 0, 0, 0]);
+        let subs = parse(&s).unwrap();
+        assert_eq!(subs, vec![(21, 4), (17, 68)]);
+        assert_eq!(s[4 + 52], 1);
+        assert_eq!(inner_layout(11), Some((4, 52)));
     }
 
     #[test]

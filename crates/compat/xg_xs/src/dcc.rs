@@ -129,6 +129,32 @@ pub fn decode(count: u32, src: &[u8], meta: &[u8], dst: &mut [u8], fmt: u32, sw:
     S_OK
 }
 
+pub unsafe fn decode_export(count: u32, src: *const u8, meta: *const u8, dst: *mut u8, fmt: u32, sw: u32, dim: u32, params: *const u32) -> i32 {
+    if params.is_null() || src.is_null() || dst.is_null() || meta.is_null() || fmt == 0 || (fmt as i32) > 0x78 || (sw as i32) > 0x1f {
+        return E_INVALIDARG;
+    }
+    if (fmt as i32) < 0 {
+        compat_common::record(crate::M, "XGDecodeDCC", &format!("format {:#x} is negative; the console indexes its format table out of bounds here, native rejects", fmt));
+        return E_INVALIDARG;
+    }
+    let (p0, p1) = (*params, *params.add(1));
+    let mut d = Dcc::new();
+    if let Err(e) = d.init(fmt, sw, dim, p0, p1) {
+        return e;
+    }
+    for i in 0..count as usize {
+        core::ptr::copy_nonoverlapping(src.add(i * 256), d.b[1].as_mut_ptr(), 256);
+        let m = *meta.add(i);
+        d.w32(0x58, m as u32);
+        if let Err(e) = dec::run(&mut d) {
+            compat_common::record(crate::M, "XGDecodeDCC", &format!("block {} meta {:#04x} format {} swizzle {}: console output for this block is undefined (integer-divide fault in its color stage, or bytes taken from uninitialised stack/buffer memory), native rejects", i, m, fmt, sw));
+            return e;
+        }
+        core::ptr::copy_nonoverlapping(d.b[0].as_ptr(), dst.add(i * 256), 256);
+    }
+    S_OK
+}
+
 pub fn encode(count: u32, src: &[u8], dst: &mut [u8], meta: &mut [u8], mut sizes: Option<&mut [u32]>, fmt: u32, sw: u32, dim: u32, p0: u32, p1: u32) -> i32 {
     let mut d = Dcc::new();
     if let Err(e) = d.init(fmt, sw, dim, p0, p1) {

@@ -173,12 +173,6 @@ pub extern "system" fn LFGetGlobalPool() -> *mut c_void {
     core::ptr::null_mut()
 }
 
-#[no_mangle]
-pub extern "system" fn MFGetPlatform() -> *mut c_void {
-    compat_common::record("mfplat", "MFGetPlatform", "console returns its internal CMFPlatform object (null before MFStartup); PC has no such object -> null");
-    core::ptr::null_mut()
-}
-
 fn block_state() -> i32 {
     if platform_started() {
         S_OK
