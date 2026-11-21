@@ -130,6 +130,36 @@ pub fn compile_with(hlsl: &str, profile: &str, extra: &[&str]) -> Result<Vec<u8>
     Ok(code)
 }
 
+pub fn compile_fma(hlsl: &str, profile: &str, fma: crate::shader_cache::Fma, extra: &[&str]) -> Result<Vec<u8>, String> {
+    let with = |on: bool| -> Vec<&str> { if on { extra.iter().copied().chain(["-D", "TB_FAST_FMA"]).collect() } else { extra.to_vec() } };
+    let minor = profile.rsplit('_').next().and_then(|m| m.parse::<u32>().ok()).unwrap_or(0);
+    if minor < 2 {
+        return compile_args(hlsl, profile, &[], &with(fma.any));
+    }
+    let code = compile_args(hlsl, profile, &["-denorm", "preserve"], &with(fma.preserve))?;
+    if profile.starts_with("cs_") && disassemble(&code).map(|t| has_preserve_unselectable(&t)).unwrap_or(false) {
+        return compile_args(hlsl, profile, &["-denorm", "any"], &with(fma.any));
+    }
+    Ok(code)
+}
+
+pub fn compile_denorm(hlsl: &str, profile: &str, denorm: &str, extra: &[&str]) -> Result<Vec<u8>, String> {
+    compile_args(hlsl, profile, &["-denorm", denorm], extra)
+}
+
+pub fn identity() -> &'static str {
+    static I: OnceLock<String> = OnceLock::new();
+    I.get_or_init(|| {
+        for dir in candidate_dirs() {
+            let (comp, dxil) = (dir.join("dxcompiler.dll"), dir.join("dxil.dll"));
+            if let (Ok(a), Ok(b)) = (std::fs::metadata(&comp), std::fs::metadata(&dxil)) {
+                return format!("dxcompiler {} dxil {}", a.len(), b.len());
+            }
+        }
+        String::from("none")
+    })
+}
+
 pub const COMPILE_FLAVOR: &str = "denorm-preserve; cs log/sqrt any";
 
 pub fn has_preserve_unselectable(disasm: &str) -> bool {

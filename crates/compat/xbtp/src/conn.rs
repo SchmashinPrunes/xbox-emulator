@@ -768,10 +768,12 @@ fn addr_is_local(a: &SocketAddress) -> bool {
 }
 
 pub fn loopback_listen_address(port: u32) -> SocketAddress {
-    let mut a = SocketAddress { size: 0x10, addr: [0; 0x1c] };
-    a.addr[0] = 2;
+    let mut a = SocketAddress { size: 0x1c, addr: [0; 0x1c] };
+    a.addr[0] = 0x17;
     a.addr[2..4].copy_from_slice(&(port as u16).to_be_bytes());
-    a.addr[4..8].copy_from_slice(&[127, 0, 0, 1]);
+    a.addr[8 + 10] = 0xff;
+    a.addr[8 + 11] = 0xff;
+    a.addr[8 + 12..8 + 16].copy_from_slice(&[127, 0, 0, 1]);
     a
 }
 

@@ -79,22 +79,21 @@ fn bix(i: u32) -> Result<usize, i32> {
 pub(crate) struct Tmp {
     b: [u8; 64],
     ever: [bool; 64],
+    fill: Option<[u8; 64]>,
+    pub(crate) hit: bool,
 }
 
 impl Tmp {
     pub(crate) fn new() -> Tmp {
-        Tmp { b: [0; 64], ever: [false; 64] }
+        Tmp::with(None)
     }
-}
-
-fn lay(d: &mut Dcc, dst: usize, src: usize, maps: &[Option<(u32, u32)>; 4]) -> Result<(), i32> {
-    lay_in(d, dst, src, maps, &mut Tmp::new())
+    pub(crate) fn with(fill: Option<[u8; 64]>) -> Tmp {
+        Tmp { b: [0; 64], ever: [false; 64], fill, hit: false }
+    }
 }
 
 fn lay_in(d: &mut Dcc, dst: usize, src: usize, maps: &[Option<(u32, u32)>; 4], t: &mut Tmp) -> Result<(), i32> {
     let s = d.b[src];
-    let tmp = &mut t.b;
-    let ever = &mut t.ever;
     for k in 0..4u32 {
         if !seg(d, k)? {
             continue;
@@ -107,13 +106,20 @@ fn lay_in(d: &mut Dcc, dst: usize, src: usize, maps: &[Option<(u32, u32)>; 4], t
         for a in o..o + 64 {
             let c = get(d, a as u32, from)?;
             let b = (set(d, &c, to)? & 0x3f) as usize;
-            tmp[b] = s[a];
-            ever[b] = true;
+            t.b[b] = s[a];
+            t.ever[b] = true;
         }
-        if ever.iter().any(|&x| !x) {
-            return Err(E);
+        if t.ever.iter().any(|&x| !x) {
+            let Some(v) = t.fill else { return Err(E) };
+            for p in 0..64 {
+                if !t.ever[p] {
+                    t.b[p] = v[p];
+                    t.ever[p] = true;
+                }
+            }
+            t.hit = true;
         }
-        d.b[dst][o..o + 64].copy_from_slice(&tmp[..]);
+        d.b[dst][o..o + 64].copy_from_slice(&t.b[..]);
     }
     Ok(())
 }
@@ -495,7 +501,7 @@ fn seg_widths(d: &mut Dcc, k: u32) -> Result<(), i32> {
     Ok(())
 }
 
-pub(crate) fn tid(d: &mut Dcc) -> Result<(), i32> {
+pub(crate) fn tid_with(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32> {
     let gm = [3u32; 4];
     let al = d.r32(0x12c0);
     let mut sm = [4u32; 4];
@@ -513,7 +519,8 @@ pub(crate) fn tid(d: &mut Dcc) -> Result<(), i32> {
             maps[k] = Some((gm[k], sm[k]));
         }
     }
-    lay(d, 2, 2, &maps)?;
+    let mut t = Tmp::with(fill);
+    lay_in(d, 2, 2, &maps, &mut t)?;
     for q in 0..8u32 {
         if !seg(d, q >> 1)? {
             continue;
@@ -540,20 +547,25 @@ pub(crate) fn tid(d: &mut Dcc) -> Result<(), i32> {
     for k in 0..4 {
         seg_widths(d, k)?;
     }
-    Ok(())
+    Ok(t.hit)
 }
 
 pub(crate) fn vrs(d: &mut Dcc) -> Result<(), i32> {
+    vrs_with(d, None).map(|_| ())
+}
+
+pub(crate) fn vrs_with(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32> {
     let sb = d.r32(4);
     if sb == 16 {
         d.w32(4, 8);
     }
-    let r = vrs_body(d);
+    let r = vrs_body(d, fill);
     d.w32(4, sb);
     r
 }
 
-fn vrs_body(d: &mut Dcc) -> Result<(), i32> {
+fn vrs_body(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32> {
+    let mut hit = false;
     let fl = variant_flag(d);
     d.w8(0x394, fl);
     let top = if fl != 0 { 3usize } else { 0 };
@@ -573,7 +585,7 @@ fn vrs_body(d: &mut Dcc) -> Result<(), i32> {
             _ => (0, 4),
         };
         d.w32(0x12c0, val);
-        tid(d)?;
+        hit |= tid_with(d, fill)?;
         let o = 0xb99 + v * 0x100;
         let b = d.b[2];
         d.m[o..o + 256].copy_from_slice(&b);
@@ -586,7 +598,7 @@ fn vrs_body(d: &mut Dcc) -> Result<(), i32> {
             d.m[0x10dc + 32 * v + e as usize] = a as u8;
         }
     }
-    Ok(())
+    Ok(hit)
 }
 
 pub(crate) fn choose(d: &mut Dcc) -> Result<(), i32> {
@@ -1182,9 +1194,13 @@ pub(crate) fn pack(d: &mut Dcc) -> Result<(), i32> {
 }
 
 pub fn run(d: &mut Dcc) -> Result<(), i32> {
+    run_with(d, None, None).map(|_| ())
+}
+
+pub fn run_with(d: &mut Dcc, fill: Option<[u8; 64]>, conv: Option<[u8; 64]>) -> Result<bool, i32> {
     d.w64(0x13c0, 0);
     d.w32(0xf0, 0);
-    let mut t = Tmp::new();
+    let mut t = Tmp::with(fill);
     relay_in(d, 2, 0, 1, &mut t)?;
     clear_detect(d)?;
     channel(d)?;
@@ -1193,12 +1209,13 @@ pub fn run(d: &mut Dcc) -> Result<(), i32> {
     color(d)?;
     relay_in(d, 2, 2, 3, &mut t)?;
     delta(d)?;
-    vrs(d)?;
+    let h = vrs_with(d, conv)?;
     choose(d)?;
     far(d)?;
     subbed(d)?;
     plan(d)?;
-    pack(d)
+    pack(d)?;
+    Ok(t.hit || h)
 }
 
 pub(crate) fn subbed(d: &mut Dcc) -> Result<(), i32> {

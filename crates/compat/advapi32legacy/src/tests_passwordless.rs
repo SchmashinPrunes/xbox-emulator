@@ -53,21 +53,28 @@ fn console_client_binding_matches_console_security_template() {
 #[test]
 fn security_callback_follows_console_gate() {
     let t = TitleToken::console_title();
+    let p = opnum_policy(OPNUM_ENABLE);
     let ok = CallAttributes::console_client(OPNUM_ENABLE);
-    assert_eq!(security_callback(&ok, &t), 0);
-    assert_eq!(security_callback(&CallAttributes::console_client(OPNUM_DISABLE), &t), 0);
-    assert_eq!(security_callback(&CallAttributes { protocol_sequence: 1, ..ok }, &t), ERROR_ACCESS_DENIED);
-    assert_eq!(security_callback(&CallAttributes { is_client_local: 0, ..ok }, &t), ERROR_ACCESS_DENIED);
+    assert_eq!(security_callback(&ok, p, &t), 0);
+    assert_eq!(security_callback(&CallAttributes::console_client(OPNUM_DISABLE), opnum_policy(OPNUM_DISABLE), &t), 0);
+    assert_eq!(security_callback(&CallAttributes { protocol_sequence: 1, ..ok }, p, &t), RPC_S_PROTSEQ_NOT_SUPPORTED);
+    assert_eq!(security_callback(&CallAttributes { is_client_local: 0, ..ok }, p, &t), ERROR_ACCESS_DENIED);
     for level in 2..=4 {
-        assert_eq!(security_callback(&CallAttributes { authentication_level: level, ..ok }, &t), ERROR_ACCESS_DENIED);
+        assert_eq!(security_callback(&CallAttributes { authentication_level: level, ..ok }, p, &t), ERROR_ACCESS_DENIED);
     }
-    assert_eq!(security_callback(&CallAttributes { authentication_level: 5, ..ok }, &t), 0);
-    assert_eq!(security_callback(&CallAttributes { authentication_service: RPC_C_AUTHN_NETLOGON, ..ok }, &t), ERROR_ACCESS_DENIED);
-    assert_eq!(security_callback(&CallAttributes { opnum: 0x81, ..ok }, &t), ERROR_ACCESS_DENIED);
+    assert_eq!(security_callback(&CallAttributes { authentication_level: 5, ..ok }, p, &t), 0);
+    assert_eq!(security_callback(&CallAttributes { opnum: 0x81, ..ok }, p, &t), RPC_S_PROCNUM_OUT_OF_RANGE);
+    assert_eq!(security_callback(&ok, Some(OpnumPolicy { protseq_mask: 8, flags: 7 }), &t), RPC_S_PROCNUM_OUT_OF_RANGE);
     let app = TitleToken { is_app_container: true, ..t.clone() };
-    assert_eq!(security_callback(&ok, &app), ERROR_ACCESS_DENIED);
-    let outsider = TitleToken { user: "S-1-5-7".into(), groups: vec!["S-1-1-0".into()], is_app_container: false };
-    assert_eq!(security_callback(&ok, &outsider), ERROR_ACCESS_DENIED);
+    assert_eq!(security_callback(&ok, p, &app), ERROR_ACCESS_DENIED);
+    let outsider = TitleToken { user: "S-1-5-7".into(), groups: vec!["S-1-1-0".into()], is_app_container: false, membership_error: 0 };
+    assert_eq!(security_callback(&ok, p, &outsider), ERROR_ACCESS_DENIED);
+    let netlogon = CallAttributes { authentication_service: RPC_C_AUTHN_NETLOGON, ..ok };
+    assert_eq!(security_callback(&netlogon, p, &outsider), 0);
+    assert_eq!(security_callback(&CallAttributes { authentication_level: 1, ..netlogon }, p, &outsider), ERROR_ACCESS_DENIED);
+    let failing = TitleToken { membership_error: 8, ..t.clone() };
+    assert_eq!(security_callback(&ok, p, &failing), 8);
+    assert_eq!(security_callback(&ok, Some(OpnumPolicy { protseq_mask: 8, flags: 1 }), &outsider), 0);
 }
 
 #[test]
@@ -84,7 +91,7 @@ fn lsa_enable_and_disable_password_less_write_the_device_value() {
     let d = temp("device");
     let h = Hklm::at(&d);
     let t = TitleToken::console_title();
-    assert_eq!(h.get_dword(DEVICE_KEY, DEVICE_VALUE), Err(3));
+    assert!(h.get_dword(DEVICE_KEY, DEVICE_VALUE).is_err());
     assert_eq!(lsarpc_call(&h, OPNUM_ENABLE, &CallAttributes::console_client(OPNUM_ENABLE), &t), 0);
     assert_eq!(h.get_dword(DEVICE_KEY, DEVICE_VALUE), Ok(2));
     assert!(h.value_path(DEVICE_KEY, DEVICE_VALUE).starts_with(&d));

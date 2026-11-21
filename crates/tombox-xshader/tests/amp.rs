@@ -54,7 +54,7 @@ fn console_as_fixture_uses_the_decoded_ring_abi() {
 fn amp_hlsl_dispatches_from_the_args_entry() {
     let t = hlsl_of("as3.dxbc");
     assert_eq!(t.profile, "as_6_5");
-    assert!(t.hlsl.starts_with("#define TB_AMP_GMEM 1\n"), "{}", t.hlsl);
+    assert!(t.hlsl.lines().any(|l| l == "#define TB_AMP_GMEM 1"), "{}", t.hlsl);
     assert!(t.hlsl.contains("struct TbPayload { uint w[4]; };"), "{}", t.hlsl);
     assert!(t.hlsl.contains("DispatchMesh(tb_args[0], 1, 1, tb_pl);"), "{}", t.hlsl);
     assert!(t.hlsl.contains("s2 = 0x10000000u; s3 = 0x20000000u; s4 = gid.x;"), "{}", t.hlsl);

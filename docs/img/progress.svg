@@ -1804,34 +1804,34 @@
 <rect x="986.53" y="815.22" width="13.47" height="24.78" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="991.53" y="831.22" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">O</text>
 </g>
-<text x="4.00" y="871.00" font-family="sans-serif" font-size="16" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Shader stages translated: 75.00% (6/8)</text>
-<g><title>Vertex: 1/1 (100%)</title>
-<rect x="1.00" y="881.00" width="123.00" height="58.00" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<text x="4.00" y="871.00" font-family="sans-serif" font-size="16" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Shader stages translated: 0.00% (0/8)</text>
+<g><title>Vertex: 0/1 (0%)</title>
+<rect x="1.00" y="881.00" width="123.00" height="58.00" fill="#d29922" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="0.00" y="880.00" width="125.00" height="60.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="5.00" y="896.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Vertex</text>
 </g>
-<g><title>Pixel: 1/1 (100%)</title>
-<rect x="126.00" y="881.00" width="123.00" height="58.00" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<g><title>Pixel: 0/1 (0%)</title>
+<rect x="126.00" y="881.00" width="123.00" height="58.00" fill="#d29922" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="125.00" y="880.00" width="125.00" height="60.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="130.00" y="896.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Pixel</text>
 </g>
-<g><title>Compute: 1/1 (100%)</title>
-<rect x="251.00" y="881.00" width="123.00" height="58.00" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<g><title>Compute: 0/1 (0%)</title>
+<rect x="251.00" y="881.00" width="123.00" height="58.00" fill="#d29922" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="250.00" y="880.00" width="125.00" height="60.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="255.00" y="896.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Compute</text>
 </g>
-<g><title>Geometry: 1/1 (100%)</title>
-<rect x="376.00" y="881.00" width="123.00" height="58.00" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<g><title>Geometry: 0/1 (0%)</title>
+<rect x="376.00" y="881.00" width="123.00" height="58.00" fill="#d29922" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="375.00" y="880.00" width="125.00" height="60.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="380.00" y="896.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Geometry</text>
 </g>
-<g><title>Hull: 1/1 (100%)</title>
-<rect x="501.00" y="881.00" width="123.00" height="58.00" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<g><title>Hull: 0/1 (0%)</title>
+<rect x="501.00" y="881.00" width="123.00" height="58.00" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="500.00" y="880.00" width="125.00" height="60.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="505.00" y="896.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Hull</text>
 </g>
-<g><title>Domain: 1/1 (100%)</title>
-<rect x="626.00" y="881.00" width="123.00" height="58.00" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<g><title>Domain: 0/1 (0%)</title>
+<rect x="626.00" y="881.00" width="123.00" height="58.00" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="625.00" y="880.00" width="125.00" height="60.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="630.00" y="896.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Domain</text>
 </g>

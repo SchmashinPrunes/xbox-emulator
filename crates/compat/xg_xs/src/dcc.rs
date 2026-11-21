@@ -155,6 +155,54 @@ pub unsafe fn decode_export(count: u32, src: *const u8, meta: *const u8, dst: *m
     S_OK
 }
 
+pub(crate) const E_RESIDUE: i32 = compat_common::E_NOTIMPL;
+
+fn enc_try(pre: &Dcc, relay: u8, conv: u8) -> Result<(Dcc, u32), i32> {
+    let mut t = Dcc { m: pre.m.clone(), b: pre.b };
+    enc::run_with(&mut t, Some([relay; 64]), Some([conv; 64]))?;
+    let sz = block_size(&t)?;
+    Ok((t, sz))
+}
+
+fn same(a: &(Dcc, u32), b: &(Dcc, u32)) -> bool {
+    a.0.b[1] == b.0.b[1] && a.0.r8(0x58) == b.0.r8(0x58) && a.1 == b.1
+}
+
+fn enc_block(d: &mut Dcc) -> Result<u32, i32> {
+    let pre = Dcc { m: d.m.clone(), b: d.b };
+    if enc::run_with(d, None, None).is_ok() {
+        return block_size(d);
+    }
+    let fills = [0x00u8, 0xff, 0x5a];
+    let mut runs = Vec::new();
+    for v in fills {
+        runs.push(enc_try(&pre, v, v)?);
+    }
+    if runs[1..].iter().all(|r| same(r, &runs[0])) {
+        let (t, s) = runs.swap_remove(0);
+        *d = t;
+        return Ok(s);
+    }
+    for v in &fills[1..] {
+        if !same(&enc_try(&pre, *v, 0)?, &enc_try(&pre, 0, 0)?) {
+            return Err(E_INVALIDARG);
+        }
+    }
+    Err(E_RESIDUE)
+}
+
+fn block_size(d: &Dcc) -> Result<u32, i32> {
+    let mask = d.r32(0x5c);
+    let segs = bits::seg_info_checked(d.r32(0x58)).ok_or(E_INVALIDARG)?;
+    let mut acc = 0u32;
+    for k in 0..4 {
+        if (mask >> k) & 1 != 0 {
+            acc |= segs[4 + k];
+        }
+    }
+    Ok(acc.count_ones() << 5)
+}
+
 pub fn encode(count: u32, src: &[u8], dst: &mut [u8], meta: &mut [u8], mut sizes: Option<&mut [u32]>, fmt: u32, sw: u32, dim: u32, p0: u32, p1: u32) -> i32 {
     let mut d = Dcc::new();
     if let Err(e) = d.init(fmt, sw, dim, p0, p1) {
@@ -162,25 +210,50 @@ pub fn encode(count: u32, src: &[u8], dst: &mut [u8], meta: &mut [u8], mut sizes
     }
     for i in 0..count as usize {
         d.b[0].copy_from_slice(&src[i * 256..i * 256 + 256]);
-        if let Err(e) = enc::run(&mut d) {
-            return e;
-        }
-        let mask = d.r32(0x5c);
-        let Some(segs) = bits::seg_info_checked(d.r32(0x58)) else {
-            return E_INVALIDARG;
+        let size = match enc_block(&mut d) {
+            Ok(s) => s,
+            Err(e) => return e,
         };
-        let mut acc = 0u32;
-        for k in 0..4 {
-            if (mask >> k) & 1 != 0 {
-                acc |= segs[4 + k];
-            }
-        }
-        let size = acc.count_ones() << 5;
         if let Some(s) = sizes.as_deref_mut() {
             s[i] = size;
         }
         dst[i * 256..i * 256 + 256].copy_from_slice(&d.b[1]);
         meta[i] = d.r8(0x58);
+    }
+    S_OK
+}
+
+pub unsafe fn encode_export(count: u32, src: *const u8, dst: *mut u8, meta: *mut u8, sizes: *mut u32, fmt: u32, sw: u32, dim: u32, params: *const u32) -> i32 {
+    if params.is_null() || src.is_null() || dst.is_null() || meta.is_null() || fmt == 0 || (fmt as i32) > 0x78 || (sw as i32) > 0x1f {
+        return E_INVALIDARG;
+    }
+    if (fmt as i32) < 0 {
+        compat_common::record(crate::M, "XGEncodeDCC", &format!("format {:#x} is negative; the console indexes its format table out of bounds here, native rejects", fmt));
+        return E_INVALIDARG;
+    }
+    let (p0, p1) = (*params, *params.add(1));
+    let mut d = Dcc::new();
+    if let Err(e) = d.init(fmt, sw, dim, p0, p1) {
+        return e;
+    }
+    for i in 0..count as usize {
+        core::ptr::copy_nonoverlapping(src.add(i * 256), d.b[0].as_mut_ptr(), 256);
+        let size = match enc_block(&mut d) {
+            Ok(s) => s,
+            Err(e) if e == E_RESIDUE => {
+                compat_common::record(crate::M, "XGEncodeDCC", &format!("[native E_NOTIMPL] block {} format {} swizzle {} dim {} params {:#x},{:#x}: the console tid convert 0x4adc0 (via 0x28b60/0x28df0) copies 16 never-written bytes of its stack buffer into the block; the console result is repeatable but those bytes are not modelled yet", i, fmt, sw, dim, p0, p1));
+                return e;
+            }
+            Err(e) => {
+                compat_common::record(crate::M, "XGEncodeDCC", &format!("block {} format {} swizzle {} dim {} params {:#x},{:#x}: console output for this block is undefined (integer-divide fault in its color stage, or output bytes taken from uninitialised stack memory that change with prior stack contents and buffer addresses), native rejects", i, fmt, sw, dim, p0, p1));
+                return e;
+            }
+        };
+        if !sizes.is_null() {
+            *sizes.add(i) = size;
+        }
+        core::ptr::copy_nonoverlapping(d.b[1].as_ptr(), dst.add(i * 256), 256);
+        *meta.add(i) = d.r8(0x58);
     }
     S_OK
 }

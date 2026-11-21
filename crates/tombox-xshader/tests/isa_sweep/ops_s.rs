@@ -26,28 +26,26 @@ fn post64() -> Vec<u32> {
     w
 }
 
-fn bfe64(a: u64, b: u32, signed: bool, bits: u32) -> Option<u64> {
+fn bfe64(a: u64, b: u32, signed: bool, bits: u32) -> u64 {
     let o = b & (bits - 1);
     let w = (b >> 16) & 127;
-    if w > bits || o + w > bits {
-        return None;
-    }
-    if w == 0 {
-        return Some(0);
-    }
-    let a = if bits == 32 { a & 0xffff_ffff } else { a };
+    let all = if bits == 32 { 0xffff_ffffu64 } else { u64::MAX };
     let x = if signed {
         let sa = if bits == 32 { a as u32 as i32 as i64 } else { a as i64 };
         (sa >> o) as u64
     } else {
-        a >> o
+        (a & all) >> o
     };
-    if w >= 64 {
-        return Some(x);
+    if w == 0 {
+        return 0;
     }
-    let v = x & ((1u64 << w) - 1);
-    let r = if signed && (v >> (w - 1)) & 1 != 0 { v | !((1u64 << w) - 1) } else { v };
-    Some(if bits == 32 { r & 0xffff_ffff } else { r })
+    if w >= bits {
+        return x & all;
+    }
+    let mask = (1u64 << w) - 1;
+    let v = x & mask;
+    let r = if signed && (v >> (w - 1)) & 1 != 0 { v | !mask } else { v };
+    r & all
 }
 
 fn wqm(x: u64, n: u32) -> u64 {
@@ -133,22 +131,32 @@ fn sop2_ops(s: &mut Suite) {
         }
     }
     for (m, op, signed) in [("s_bfe_u32", 0x27u32, false), ("s_bfe_i32", 0x28, true)] {
-        s.add(m, "SOP2", "s,{w,o}", Class::U32, &[sop2(0x0e, 44, 11, LIT), 0x003f_001f], &[sop2(op, D, 10, 44)], &post32(), &[Cmp::X, Cmp::X], move |x| {
-            let b = x.d[1] & 0x003f_001f;
-            match bfe64(x.d[0] as u64, b, signed, 32) {
-                Some(r) => o2(r as u32, nz(r)),
-                None => vec![None, None],
-            }
-        });
+        for (name, k) in [("s,{w,o}", 0x007f_001fu32), ("s,{w,o} reserved bits set", u32::MAX)] {
+            s.add(m, "SOP2", name, Class::U32, &[sop2(0x0e, 44, 11, LIT), k], &[sop2(op, D, 10, 44)], &post32(), &[Cmp::X, Cmp::X], move |x| {
+                let r = bfe64(x.d[0] as u64, x.d[1] & k, signed, 32);
+                o2(r as u32, nz(r))
+            });
+        }
+        for w in [0u32, 1, 31, 32, 33, 63, 64, 65, 127] {
+            s.add(m, "SOP2", &format!("s,{{w={w},o=lane}}"), Class::U32, &[sop2(0x0e, 44, 11, ic(31)), sop2(0x10, 44, 44, LIT), w << 16], &[sop2(op, D, 10, 44)], &post32(), &[Cmp::X, Cmp::X], move |x| {
+                let r = bfe64(x.d[0] as u64, (x.d[1] & 31) | (w << 16), signed, 32);
+                o2(r as u32, nz(r))
+            });
+        }
     }
     for (m, op, signed) in [("s_bfe_u64", 0x29u32, false), ("s_bfe_i64", 0x2a, true)] {
-        s.add(m, "SOP2", "s64,{w,o}", Class::U64, &[sop2(0x0e, 44, 12, LIT), 0x007f_003f], &[sop2(op, D, 10, 44)], &post64(), &[Cmp::X, Cmp::X, Cmp::X], move |x| {
-            let b = x.d[2] & 0x007f_003f;
-            match bfe64(w64(x, 0), b, signed, 64) {
-                Some(r) => vec![Some(r as u32), Some((r >> 32) as u32), Some(nz(r))],
-                None => vec![None, None, None],
-            }
-        });
+        for (name, k) in [("s64,{w,o}", 0x007f_003fu32), ("s64,{w,o} reserved bits set", u32::MAX)] {
+            s.add(m, "SOP2", name, Class::U64, &[sop2(0x0e, 44, 12, LIT), k], &[sop2(op, D, 10, 44)], &post64(), &[Cmp::X, Cmp::X, Cmp::X], move |x| {
+                let r = bfe64(w64(x, 0), x.d[2] & k, signed, 64);
+                vec![Some(r as u32), Some((r >> 32) as u32), Some(nz(r))]
+            });
+        }
+        for w in [0u32, 1, 31, 32, 33, 63, 64, 65, 127] {
+            s.add(m, "SOP2", &format!("s64,{{w={w},o=lane}}"), Class::U64, &[sop2(0x0e, 44, 12, LIT), 0x3f, sop2(0x10, 44, 44, LIT), w << 16], &[sop2(op, D, 10, 44)], &post64(), &[Cmp::X, Cmp::X, Cmp::X], move |x| {
+                let r = bfe64(w64(x, 0), (x.d[2] & 63) | (w << 16), signed, 64);
+                vec![Some(r as u32), Some((r >> 32) as u32), Some(nz(r))]
+            });
+        }
     }
     let w: &[(&'static str, u32, Class, S2W)] = &[
         ("s_cselect_b64", 0x0b, Class::U64, |a, b, c| (if c != 0 { a } else { b }, None)),

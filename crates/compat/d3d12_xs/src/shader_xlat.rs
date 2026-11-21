@@ -9,7 +9,7 @@
 use compat_common::record;
 use core::ffi::c_void;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 type Cached = Result<Arc<Vec<u8>>, Arc<String>>;
@@ -168,6 +168,7 @@ pub(crate) fn translate_edited(blob: &[u8], hash: u64, rtfmt: &[u8; 8], edit: &d
 }
 
 fn translate_uncached_with(blob: &[u8], hash: u64, rtfmt: &[u8; 8], edit: Option<&dyn Fn(&str) -> Result<String, String>>, root: Option<&[u8]>) -> Result<Vec<u8>, String> {
+    let t_start = std::time::Instant::now();
     let mut ex = tombox_xshader::extract(blob).map_err(|e| {
         dump_failure(hash, blob, None, &e);
         format!("extract: {e}")
@@ -217,13 +218,41 @@ fn translate_uncached_with(blob: &[u8], hash: u64, rtfmt: &[u8; 8], edit: Option
         let h = edit(&t.hlsl)?;
         return tombox_xshader::dxc::compile(&h, &profile);
     }
-    let _ = disk_cache_dir(); // creates the cache directory
-    let cached = Some(tombox_xshader::dxc::cache_path(&t.hlsl, &profile));
     if use_dxc {
-        if let Some(v) = tombox_xshader::dxc::cache_load(&t.hlsl, &profile) {
-            return Ok(v);
+        let xlat_ms = t_start.elapsed().as_secs_f64() * 1000.0;
+        let dir = std::env::temp_dir().join("tombox_shaders");
+        let inflight = dir.join(format!("inflight_{hash:016x}.dxbc"));
+        let fma = fma_mode();
+        let k = tombox_xshader::shader_cache::key(&t.hlsl, &profile, fma, "");
+        let hit = tombox_xshader::shader_cache::contains(k);
+        if !hit {
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(&inflight, blob);
         }
-    } else if let Some(p) = &cached {
+        let r = tombox_xshader::shader_cache::compile_cached(&t.hlsl, &profile, fma, &[]);
+        if !hit {
+            let _ = std::fs::remove_file(&inflight);
+        }
+        return match r {
+            Ok(c) => {
+                note_timing(xlat_ms, c.lookup_ms, c.dxc_ms, c.source == tombox_xshader::shader_cache::Source::Pack);
+                if c.dxc_ms > 1500.0 {
+                    record("d3d12_xs", "shader_xlat", &format!("SLOW: hash={hash:016x} took {:.0} ms to compile ({} bytes in, {} HLSL lines; translate {xlat_ms:.1} ms, fast fma {})", c.dxc_ms, blob.len(), t.hlsl.lines().count(), fma.preserve));
+                    if c.dxc_ms > 10_000.0 {
+                        let _ = std::fs::write(dir.join(format!("slow_{hash:016x}.dxbc")), blob);
+                    }
+                }
+                Ok(c.code)
+            }
+            Err(e) => {
+                dump_failure(hash, blob, Some(&t.hlsl), &e);
+                Err(e)
+            }
+        };
+    }
+    let _ = disk_cache_dir();
+    let cached = Some(tombox_xshader::dxc::cache_path(&t.hlsl, &profile));
+    if let Some(p) = &cached {
         if let Ok(v) = std::fs::read(p) {
             if !v.is_empty() {
                 return Ok(v);
@@ -237,7 +266,7 @@ fn translate_uncached_with(blob: &[u8], hash: u64, rtfmt: &[u8; 8], edit: Option
     let inflight = dir.join(format!("inflight_{hash:016x}.dxbc"));
     let _ = std::fs::write(&inflight, blob);
     let t0 = std::time::Instant::now();
-    let r = if use_dxc { tombox_xshader::dxc::compile(&t.hlsl, &profile) } else { compile(&t.hlsl, &profile) };
+    let r = compile(&t.hlsl, &profile);
     let _ = std::fs::remove_file(&inflight);
     let ms = t0.elapsed().as_millis();
     if ms > 1500 {
@@ -311,61 +340,65 @@ pub fn parse_src_name(name: &str) -> Option<(u64, [u8; 8])> {
     Some((hash, rt))
 }
 
-fn cache_root() -> std::path::PathBuf {
-    std::env::temp_dir().join("tombox_shader_cache")
-}
-
-fn use_dxc() -> bool {
-    tombox_xshader::dxc::available() && std::env::var("TOMBOX_SHADER_COMPILER").map(|v| v != "fxc").unwrap_or(true)
-}
-
-fn build_stamp() -> u64 {
-    static S: OnceLock<u64> = OnceLock::new();
-    *S.get_or_init(|| {
-        extern "system" {
-            fn GetModuleHandleExW(flags: u32, addr: *const c_void, out: *mut *mut c_void) -> i32;
-            fn GetModuleFileNameW(h: *mut c_void, buf: *mut u16, n: u32) -> u32;
-        }
-        let mut h: *mut c_void = core::ptr::null_mut();
-        let mut buf = [0u16; 1024];
-        let n = unsafe {
-            if GetModuleHandleExW(6, build_stamp as *const c_void, &mut h) == 0 {
-                0
-            } else {
-                GetModuleFileNameW(h, buf.as_mut_ptr(), buf.len() as u32)
-            }
-        };
-        let path = String::from_utf16_lossy(&buf[..n as usize]);
-        let md = std::fs::metadata(&path).ok();
-        let len = md.as_ref().map(|m| m.len()).unwrap_or(0);
-        let mt = md.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0);
-        let mut k = Vec::new();
-        k.extend_from_slice(path.as_bytes());
-        k.extend_from_slice(&len.to_le_bytes());
-        k.extend_from_slice(&mt.to_le_bytes());
-        k.push(use_dxc() as u8);
-        k.push(loop_grad() as u8);
-        k.push(2);
-        fnv1a(&k)
-    })
-}
-
-fn blob_cache_path(key: u64) -> std::path::PathBuf {
-    cache_root().join("by_blob").join(format!("{:016x}", build_stamp())).join(format!("{key:016x}.bin"))
+fn title_name() -> String {
+    std::env::current_exe().ok().and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned())).unwrap_or_else(|| "title".into())
 }
 
 fn src_dir() -> std::path::PathBuf {
-    let exe = std::env::current_exe().ok().and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned())).unwrap_or_else(|| "title".into());
-    cache_root().join("src").join(exe)
+    tombox_xshader::shader_cache::src_dir(&title_name())
+}
+
+fn legacy_src_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("tombox_shader_cache").join("src").join(title_name())
 }
 
 fn src_path(hash: u64, rtfmt: &[u8; 8]) -> std::path::PathBuf {
     src_dir().join(format!("{hash:016x}_{}.xbox", rtfmt_hex(rtfmt)))
 }
 
-fn has_override(hash: u64) -> bool {
-    std::env::temp_dir().join("tombox_shader_override").join(format!("{hash:016x}.hlsl")).exists()
+fn fma_mode() -> tombox_xshader::shader_cache::Fma {
+    static F: OnceLock<tombox_xshader::shader_cache::Fma> = OnceLock::new();
+    *F.get_or_init(|| {
+        let t0 = std::time::Instant::now();
+        let p = tombox_xshader::fma_probe::probe();
+        record("d3d12_xs", "shader_xlat", &format!(
+            "fma probe ({}, {:.0} ms, {}): fast hardware fma for denorm-preserve shaders {}, for denorm-any shaders {} [{}]; cache {}",
+            p.adapter, t0.elapsed().as_secs_f64() * 1000.0, if p.cached { "cached result" } else { "measured" },
+            if p.fma.preserve { "ON" } else { "off (exact f64 path)" }, if p.fma.any { "ON" } else { "off (exact f64 path)" }, p.detail,
+            tombox_xshader::shader_cache::pack_path().display()));
+        p.fma
+    })
 }
+
+static T_XLAT: AtomicU64 = AtomicU64::new(0);
+static T_LOOKUP: AtomicU64 = AtomicU64::new(0);
+static T_DXC: AtomicU64 = AtomicU64::new(0);
+static N_COMPILED: AtomicUsize = AtomicUsize::new(0);
+static N_PACK: AtomicUsize = AtomicUsize::new(0);
+
+fn note_timing(xlat_ms: f64, lookup_ms: f64, dxc_ms: f64, hit: bool) {
+    T_XLAT.fetch_add((xlat_ms * 1000.0) as u64, Ordering::Relaxed);
+    T_LOOKUP.fetch_add((lookup_ms * 1000.0) as u64, Ordering::Relaxed);
+    T_DXC.fetch_add((dxc_ms * 1000.0) as u64, Ordering::Relaxed);
+    let n = if hit { N_PACK.fetch_add(1, Ordering::Relaxed) } else { N_COMPILED.fetch_add(1, Ordering::Relaxed) } + 1;
+    let total = N_PACK.load(Ordering::Relaxed) + N_COMPILED.load(Ordering::Relaxed);
+    if n == 1 || total % 100 == 0 {
+        record("d3d12_xs", "shader_xlat", &timing_summary());
+    }
+}
+
+pub fn timing_summary() -> String {
+    let st = tombox_xshader::shader_cache::stats();
+    let (np, nc) = (N_PACK.load(Ordering::Relaxed), N_COMPILED.load(Ordering::Relaxed));
+    let ms = |a: &AtomicU64| a.load(Ordering::Relaxed) as f64 / 1000.0;
+    format!(
+        "compile totals: {} shaders, disk hits {np}, disk misses {nc} (compiled); translate {:.0} ms, cache key+load {:.0} ms, dxc {:.0} ms (avg {:.0} ms per compiled); pack {} records, {} written, {} bad crc, {} bytes truncated; caller blocked {:.0} ms in {} waits",
+        np + nc, ms(&T_XLAT), ms(&T_LOOKUP), ms(&T_DXC), if nc > 0 { ms(&T_DXC) / nc as f64 } else { 0.0 },
+        st.records, st.writes, st.bad_crc, st.truncated, ms(&BLOCKED_US), BLOCKED_N.load(Ordering::Relaxed))
+}
+
+static BLOCKED_US: AtomicU64 = AtomicU64::new(0);
+static BLOCKED_N: AtomicUsize = AtomicUsize::new(0);
 
 fn write_atomic(p: &std::path::Path, data: &[u8]) {
     if let Some(d) = p.parent() {
@@ -377,29 +410,12 @@ fn write_atomic(p: &std::path::Path, data: &[u8]) {
     }
 }
 
-static DISK_HITS: AtomicUsize = AtomicUsize::new(0);
 static PREWARMED: AtomicUsize = AtomicUsize::new(0);
 
-fn produce(blob: &[u8], hash: u64, rtfmt: &[u8; 8], key: u64) -> Result<Vec<u8>, String> {
-    let ovr = has_override(hash);
-    let bp = blob_cache_path(key);
-    if !ovr {
-        if let Ok(v) = std::fs::read(&bp) {
-            if !v.is_empty() {
-                DISK_HITS.fetch_add(1, Ordering::Relaxed);
-                crate::dbcount::note_translated(&v, blob, hash, rtfmt);
-                return Ok(v);
-            }
-        }
-    }
+fn produce(blob: &[u8], hash: u64, rtfmt: &[u8; 8], _key: u64) -> Result<Vec<u8>, String> {
     let r = std::panic::catch_unwind(|| translate_uncached(blob, hash, rtfmt)).unwrap_or_else(|_| Err("translator panicked".to_string()));
     if let Ok(v) = &r {
         crate::dbcount::note_translated(v, blob, hash, rtfmt);
-    }
-    if let Ok(v) = &r {
-        if !ovr {
-            write_atomic(&bp, v);
-        }
         let sp = src_path(hash, rtfmt);
         if !sp.exists() {
             write_atomic(&sp, blob);
@@ -434,7 +450,7 @@ fn finish_with(res: Result<Vec<u8>, String>, hash: u64, len: usize, origin_blob:
         Ok(v) => {
             let n = OK.fetch_add(1, Ordering::Relaxed) + 1;
             if n <= 8 || n % 50 == 0 {
-                record("d3d12_xs", "shader_xlat", &format!("ok #{n} hash={hash:016x} {len}B -> {}B DXBC (disk hits {} prewarmed {})", v.len(), DISK_HITS.load(Ordering::Relaxed), PREWARMED.load(Ordering::Relaxed)));
+                record("d3d12_xs", "shader_xlat", &format!("ok #{n} hash={hash:016x} {len}B -> {}B DXBC (disk hits {} misses {} prewarmed {})", v.len(), N_PACK.load(Ordering::Relaxed), N_COMPILED.load(Ordering::Relaxed), PREWARMED.load(Ordering::Relaxed)));
             }
             let v = Arc::new(v);
             note_origin_hash(v.as_ptr() as usize, hash);
@@ -466,24 +482,37 @@ pub fn start_prewarm() {
             record("d3d12_xs", "shader_xlat", "prewarm disabled (TOMBOX_SHADER_PREWARM=0)");
             return;
         }
+        let _ = fma_mode();
         let dir = src_dir();
         let mut todo: Vec<(std::path::PathBuf, u64, [u8; 8])> = Vec::new();
-        if let Ok(rd) = std::fs::read_dir(&dir) {
+        let mut seen: std::collections::HashSet<(u64, [u8; 8])> = std::collections::HashSet::new();
+        let mut migrated = 0usize;
+        for d in [dir.clone(), legacy_src_dir()] {
+            let Ok(rd) = std::fs::read_dir(&d) else { continue };
             for e in rd.flatten() {
                 let name = e.file_name().to_string_lossy().into_owned();
-                if let Some((h, rt)) = parse_src_name(&name) {
-                    if !blob_cache_path(cache_key(h, &rt)).exists() {
-                        todo.push((e.path(), h, rt));
+                let Some((h, rt)) = parse_src_name(&name) else { continue };
+                if !seen.insert((h, rt)) {
+                    continue;
+                }
+                let mut p = e.path();
+                if d != dir {
+                    let np = dir.join(&name);
+                    if let Ok(b) = std::fs::read(&p) {
+                        write_atomic(&np, &b);
+                        migrated += 1;
+                        p = np;
                     }
                 }
+                todo.push((p, h, rt));
             }
         }
-        record("d3d12_xs", "shader_xlat", &format!("prewarm: {} known shaders need translating for this build (stamp {:016x})", todo.len(), build_stamp()));
+        record("d3d12_xs", "shader_xlat", &format!("prewarm: {} known (shader, render-target format) variants from {} ({migrated} migrated from the old temp manifest); pack {} with {} records", todo.len(), dir.display(), tombox_xshader::shader_cache::pack_path().display(), tombox_xshader::shader_cache::stats().records));
         if todo.is_empty() {
             return;
         }
         let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-        let workers = cores.saturating_sub(2).clamp(1, 16);
+        let workers = (cores / 3).clamp(1, 6);
         let queue = Arc::new(Mutex::new(todo));
         for _ in 0..workers {
             let q = queue.clone();
@@ -579,6 +608,10 @@ pub unsafe fn translate_for_targets(ptr: *const u8, len: usize, rtfmt: [u8; 8]) 
     let t0 = std::time::Instant::now();
     let entry = c.get_or_init(|| crate::perf::timed(crate::perf::SHADER, || finish(produce(blob, hash, &rtfmt, key), hash, len, blob))).clone();
     let ms = t0.elapsed().as_secs_f64() * 1000.0;
+    if ms > 1.0 {
+        BLOCKED_US.fetch_add((ms * 1000.0) as u64, Ordering::Relaxed);
+        BLOCKED_N.fetch_add(1, Ordering::Relaxed);
+    }
     if ms > 50.0 {
         static SL: AtomicUsize = AtomicUsize::new(0);
         if crate::slowcall::should_log(SL.fetch_add(1, Ordering::Relaxed) as u64 + 1) {

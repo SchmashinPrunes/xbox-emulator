@@ -84,9 +84,9 @@ const XYZW: [&str; 4] = ["x", "y", "z", "w"];
 /// face-local S/T, face index 0..5 = +X,-X,+Y,-Y,+Z,-Z). Hardware cube sampling takes
 /// (s, t, face) with s,t = sc/|ma| + 1.5 (so each is in [1, 2]); `tb_cube_dir` inverts that
 /// to the direction vector HLSL TextureCube sampling expects.
-const CUBE_HELPERS: &str = r#"uint tb_perm_byte(uint hi, uint lo, uint sel) { if (sel >= 13u) return 0xffu; if (sel == 12u) return 0u; if (sel == 11u) return (hi >> 31) * 0xffu; if (sel == 10u) return ((hi >> 15) & 1u) * 0xffu; if (sel == 9u) return (lo >> 31) * 0xffu; if (sel == 8u) return ((lo >> 15) & 1u) * 0xffu; return sel >= 4u ? ((hi >> ((sel - 4u) * 8u)) & 0xffu) : ((lo >> (sel * 8u)) & 0xffu); }
+pub(crate) const CUBE_HELPERS: &str = r#"uint tb_perm_byte(uint hi, uint lo, uint sel) { if (sel >= 13u) return 0xffu; if (sel == 12u) return 0u; if (sel == 11u) return (hi >> 31) * 0xffu; if (sel == 10u) return ((hi >> 15) & 1u) * 0xffu; if (sel == 9u) return (lo >> 31) * 0xffu; if (sel == 8u) return ((lo >> 15) & 1u) * 0xffu; return sel >= 4u ? ((hi >> ((sel - 4u) * 8u)) & 0xffu) : ((lo >> (sel * 8u)) & 0xffu); }
 uint tb_perm(uint hi, uint lo, uint sel) { return tb_perm_byte(hi, lo, sel & 0xffu) | (tb_perm_byte(hi, lo, (sel >> 8) & 0xffu) << 8) | (tb_perm_byte(hi, lo, (sel >> 16) & 0xffu) << 16) | (tb_perm_byte(hi, lo, sel >> 24) << 24); }
-bool tb_cmp_class(uint b, uint mask) { uint e = (b >> 23) & 0xffu; uint m = b & 0x7fffffu; bool neg = (b >> 31) != 0u; uint c; if (e == 0xffu) { c = (m != 0u) ? (((m & 0x400000u) != 0u) ? 1u : 0u) : (neg ? 2u : 9u); } else if (e == 0u) { c = (m == 0u) ? (neg ? 5u : 6u) : (neg ? 4u : 7u); } else { c = neg ? 3u : 8u; } return ((mask >> c) & 1u) != 0u; }uint tb_bfe_i32(uint a, uint b) { uint o = b & 31u, w = (b >> 16) & 31u; if (w == 0u) return 0u; if (w + o >= 32u) return asuint(asint(a) >> o); return asuint(asint(a << (32u - w - o)) >> (32u - w)); }uint tb_mulhi_u32(uint a, uint b) { uint a0 = a & 0xffffu, a1 = a >> 16, b0 = b & 0xffffu, b1 = b >> 16; uint p00 = a0 * b0, p01 = a0 * b1, p10 = a1 * b0, p11 = a1 * b1; uint mid = (p00 >> 16) + (p01 & 0xffffu) + (p10 & 0xffffu); return p11 + (p01 >> 16) + (p10 >> 16) + (mid >> 16); }
+bool tb_cmp_class(uint b, uint mask) { uint e = (b >> 23) & 0xffu; uint m = b & 0x7fffffu; bool neg = (b >> 31) != 0u; uint c; if (e == 0xffu) { c = (m != 0u) ? (((m & 0x400000u) != 0u) ? 1u : 0u) : (neg ? 2u : 9u); } else if (e == 0u) { c = (m == 0u) ? (neg ? 5u : 6u) : (neg ? 4u : 7u); } else { c = neg ? 3u : 8u; } return ((mask >> c) & 1u) != 0u; }uint tb_bfe_i32(uint a, uint b) { uint o = b & 31u, w = (b >> 16) & 127u; if (w == 0u) return 0u; if (w + o >= 32u) return asuint(asint(a) >> o); return asuint(asint(a << (32u - w - o)) >> (32u - w)); }uint tb_mulhi_u32(uint a, uint b) { uint a0 = a & 0xffffu, a1 = a >> 16, b0 = b & 0xffffu, b1 = b >> 16; uint p00 = a0 * b0, p01 = a0 * b1, p10 = a1 * b0, p11 = a1 * b1; uint mid = (p00 >> 16) + (p01 & 0xffffu) + (p10 & 0xffffu); return p11 + (p01 >> 16) + (p10 >> 16) + (mid >> 16); }
 bool tb_cmp_class16(uint b, uint mask) { uint e = (b >> 10) & 0x1fu; uint m = b & 0x3ffu; bool neg = ((b >> 15) & 1u) != 0u; uint c; if (e == 0x1fu) { c = (m != 0u) ? (((m & 0x200u) != 0u) ? 1u : 0u) : (neg ? 2u : 9u); } else if (e == 0u) { c = (m == 0u) ? (neg ? 5u : 6u) : (neg ? 4u : 7u); } else { c = neg ? 3u : 8u; } return ((mask >> c) & 1u) != 0u; }
 uint tb_mulhi_i32(uint a, uint b) { uint h = tb_mulhi_u32(a, b); if (asint(a) < 0) h -= b; if (asint(b) < 0) h -= a; return h; }
 float tb_cubema(float x, float y, float z) { float ax = abs(x), ay = abs(y), az = abs(z); if (az >= ax && az >= ay) return 2.0 * z; if (ay >= ax) return 2.0 * y; return 2.0 * x; }
@@ -100,7 +100,7 @@ float tb_ldexp32(float x, int e) { int k = clamp(e, -330, 330); return (float)((
 float tb_rto(double s) { float f = (float)s; if ((double)f != s) { uint u = asuint(f); if (abs((double)f) > abs(s)) u -= 1u; f = asfloat(u | 1u); } return f; }
 float tb_mull(float a, float b) { return (a == 0.0 || b == 0.0) ? 0.0 : a * b; }
 #ifdef TB_FAST_FMA
-float tb_fma(float a, float b, float c) { return mad(a, b, c); }
+float tb_fma(float a, float b, float c) { precise float r = mad(a, b, c); uint m = 0x7fffffffu; uint xa = asuint(a) & m, xb = asuint(b) & m, xc = asuint(c) & m; if (max(max(xa, xb), xc) > 0x7f800000u) return asfloat(((xa > 0x7f800000u) ? asuint(a) : ((xb > 0x7f800000u) ? asuint(b) : asuint(c))) | 0x400000u); return ((asuint(r) & m) > 0x7f800000u) ? asfloat(0x7fc00000u) : r; }
 #else
 float tb_fma(float a, float b, float c) { precise double p = (double)a * (double)b; precise double dc = (double)c; precise double s = p + dc; precise double bb = s - p; precise double e = (p - (s - bb)) + (dc - bb); uint lo, hi; asuint(s, lo, hi); uint fin = (uint)(abs(s) < 1.0e300); uint adj = fin & (uint)(e != 0.0) & (~lo & 1u); uint dn = adj & (uint)((e > 0.0) != (s > 0.0)); precise float r = (float)asdouble(lo + adj - 2u * dn, hi - (dn & (uint)(lo == 0u))); uint m = 0x7fffffffu; float q = ((asuint(r) & m) > 0x7f800000u) ? asfloat(0x7fc00000u) : r; float sp = (max(max(asuint(a) & m, asuint(b) & m), asuint(c) & m) > 0x7f800000u) ? asfloat((((asuint(a) & m) > 0x7f800000u) ? asuint(a) : (((asuint(b) & m) > 0x7f800000u) ? asuint(b) : asuint(c))) | 0x400000u) : q; return ((fin | (uint)(abs(p) < 1.0e300)) != 0u) ? r : sp; }
 #endif
@@ -2308,6 +2308,11 @@ impl<'a> Emitter<'a> {
                 }
                 cur = active;
             }
+            if open && self.is_ms() && self.loop_depth == 0 && ins.enc == Enc::Sopp && ins.op == 0x0a {
+                self.line("}");
+                open = false;
+                cur.clear();
+            }
             for o in ins.src.iter().chain(ins.dst.iter()) {
                 self.touch(o);
             }
@@ -2822,6 +2827,11 @@ impl<'a> Emitter<'a> {
                     self.line(&format!(
                         "uint t{t}o = {b} & 63u; uint t{t}w = min(({b} >> 16) & 127u, 64u); uint t{t}l = (t{t}o == 0u) ? {a} : ((t{t}o >= 32u) ? ({ah} >> (t{t}o - 32u)) : (({a} >> t{t}o) | ({ah} << (32u - t{t}o)))); uint t{t}h = (t{t}o >= 32u) ? 0u : ({ah} >> t{t}o);"
                     ));
+                    if m == "s_bfe_i64" {
+                        self.line(&format!(
+                            "if (t{t}o >= 32u) {{ t{t}l = asuint(asint({ah}) >> (t{t}o - 32u)); t{t}h = asuint(asint({ah}) >> 31); }} else if (t{t}o != 0u) {{ t{t}h = asuint(asint({ah}) >> t{t}o); }}"
+                        ));
+                    }
                     self.line(&format!(
                         "if (t{t}w < 32u) {{ t{t}l &= (1u << t{t}w) - 1u; t{t}h = 0u; }} else if (t{t}w < 64u) {{ t{t}h &= (1u << (t{t}w - 32u)) - 1u; }}"
                     ));
@@ -2946,7 +2956,7 @@ impl<'a> Emitter<'a> {
                     "s_min_i32" => format!("asuint(min(asint({a}), asint({b})))"),
                     "s_max_i32" => format!("asuint(max(asint({a}), asint({b})))"),
                     "s_cselect_b32" => format!("((scc != 0u) ? {a} : {b})"),
-                    "s_bfe_u32" => format!("(({a} >> ({b} & 31u)) & ((1u << (({b} >> 16) & 31u)) - 1u))"),
+                    "s_bfe_u32" => format!("(((({b} >> 16) & 127u) >= 32u) ? ({a} >> ({b} & 31u)) : (({a} >> ({b} & 31u)) & ((1u << (({b} >> 16) & 31u)) - 1u)))"),
                     "s_bfe_i32" => format!("tb_bfe_i32({a}, {b})"),
                     "s_bfm_b32" => format!("(((1u << ({a} & 31u)) - 1u) << ({b} & 31u))"),
                     "s_lshl1_add_u32" => format!("(({a} << 1) + {b})"),

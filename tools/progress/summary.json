@@ -22,9 +22,9 @@
    "pct": 100.0
   },
   "shader_stages": {
-   "done": 6,
+   "done": 0,
    "total": 8,
-   "pct": 75.0
+   "pct": 0.0
   },
   "milestones": {
    "done": 9,

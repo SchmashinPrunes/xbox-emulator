@@ -42,19 +42,19 @@ unsafe fn vt<T>(p: *mut c_void) -> &'static T {
     &**(p as *const *const T)
 }
 
-pub(crate) unsafe fn com_add_ref(p: *mut c_void) -> u32 {
+pub unsafe fn com_add_ref(p: *mut c_void) -> u32 {
     let v: &[usize; 3] = vt(p);
     let f: Ref = core::mem::transmute(v[1]);
     f(p)
 }
 
-pub(crate) unsafe fn com_release(p: *mut c_void) -> u32 {
+pub unsafe fn com_release(p: *mut c_void) -> u32 {
     let v: &[usize; 3] = vt(p);
     let f: Ref = core::mem::transmute(v[2]);
     f(p)
 }
 
-pub(crate) unsafe fn com_qi(p: *mut c_void, iid: *const GUID, out: *mut *mut c_void) -> HRESULT {
+pub unsafe fn com_qi(p: *mut c_void, iid: *const GUID, out: *mut *mut c_void) -> HRESULT {
     let v: &[usize; 3] = vt(p);
     let f: Qi = core::mem::transmute(v[0]);
     f(p, iid, out)

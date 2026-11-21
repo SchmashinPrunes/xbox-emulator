@@ -67,7 +67,7 @@ fn containers(data: &[u8], seen: &mut HashSet<u64>, out: &mut Vec<(Vec<u8>, [u8;
 }
 
 fn default_src_dir() -> std::path::PathBuf {
-    std::env::temp_dir().join("tombox_shader_cache").join("src").join("FortniteClient-XSX-Shipping")
+    tombox_xshader::shader_cache::src_dir("FortniteClient-XSX-Shipping")
 }
 
 #[derive(Default)]
@@ -82,7 +82,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut inputs: Vec<String> = Vec::new();
     let mut src_dirs: Vec<std::path::PathBuf> = Vec::new();
-    let mut jobs = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).saturating_sub(2).max(1);
+    let mut jobs = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).saturating_sub(4).max(1);
     let mut limit = usize::MAX;
     let mut dry = false;
     let mut bench: Option<(String, String)> = None;
@@ -95,6 +95,8 @@ fn main() -> ExitCode {
             }
             "--known" => {
                 src_dirs.push(default_src_dir());
+                src_dirs.push(std::env::temp_dir().join("tombox_shader_cache").join("src").join("FortniteClient-XSX-Shipping"));
+                src_dirs.push(std::env::temp_dir().join("tombox_shader_cache").join("pack").join("titles").join("FortniteClient-XSX-Shipping").join("src"));
                 i += 1;
             }
             "--jobs" => {
@@ -128,7 +130,7 @@ fn main() -> ExitCode {
     }
     if inputs.is_empty() && src_dirs.is_empty() {
         eprintln!("usage: xprecompile [--known | --src <dir>] [<shader archive or .pak>...] [--jobs n] [--limit n] [--dry]");
-        eprintln!("fills the on-disk DXIL cache (%TEMP%\\tombox_shader_cache\\by_hlsl) with exactly the HLSL the runtime would compile; inputs are only read");
+        eprintln!("fills the runtime DXIL pack ({}) with exactly the HLSL the runtime would compile; inputs are only read", tombox_xshader::shader_cache::pack_path().display());
         return ExitCode::FAILURE;
     }
     if !dxc::available() {
@@ -142,7 +144,9 @@ fn main() -> ExitCode {
         }
         SetPriorityClass(GetCurrentProcess(), 0x4000);
     }
-    let _ = std::fs::create_dir_all(std::env::temp_dir().join("tombox_shader_cache").join("by_hlsl"));
+    let probe = tombox_xshader::fma_probe::probe();
+    let fma = probe.fma;
+    eprintln!("pack {} ({} records); fma probe on {}: preserve {} any {} [{}]{}", tombox_xshader::shader_cache::pack_path().display(), tombox_xshader::shader_cache::stats().records, probe.adapter, fma.preserve, fma.any, probe.detail, if probe.cached { " (cached)" } else { "" });
     let t_gather = std::time::Instant::now();
     let mut work: Vec<(Vec<u8>, [u8; 8])> = Vec::new();
     let mut seen_pairs: HashSet<(u64, [u8; 8])> = HashSet::new();
@@ -220,17 +224,14 @@ fn main() -> ExitCode {
                         dxc::compile(&src, &profile).map_err(|e| (st.clone(), e))?;
                         return Ok((st, t0.elapsed().as_millis(), true, src.lines().count()));
                     }
-                    if dxc::cache_load(&src, &profile).is_some() {
+                    if tombox_xshader::shader_cache::contains(tombox_xshader::shader_cache::key(&src, &profile, fma, "")) {
                         return Ok((st, 0u128, false, src.lines().count()));
                     }
                     if dry {
                         return Ok((st, 0u128, true, src.lines().count()));
                     }
-                    let t0 = std::time::Instant::now();
-                    let code = dxc::compile(&src, &profile).map_err(|e| (st.clone(), e))?;
-                    let ms = t0.elapsed().as_millis();
-                    let _ = std::fs::write(dxc::cache_path(&src, &profile), code);
-                    Ok((st, ms, true, src.lines().count()))
+                    let c = tombox_xshader::shader_cache::compile_cached(&src, &profile, fma, &[]).map_err(|e| (st.clone(), e))?;
+                    Ok((st, c.dxc_ms as u128, c.source == tombox_xshader::shader_cache::Source::Compiled, src.lines().count()))
                 });
                 let mut g = tally.lock().unwrap();
                 match r {

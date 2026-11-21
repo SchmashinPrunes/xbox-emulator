@@ -279,6 +279,10 @@ dependencies = [
 [[package]]
 name = "kerneltracecontrol"
 version = "0.1.0"
+dependencies = [
+ "console-image",
+ "xone-exports",
+]
 
 [[package]]
 name = "lazy_static"

@@ -362,7 +362,8 @@ pub fn hlsl_for(words: &[u32]) -> Result<String, String> {
 fn compile(ts: &[&T]) -> Result<(Vec<u8>, (u32, u32), String), String> {
     let words = program(ts);
     let t = translate(&cs_extract(&words)).map_err(|e| format!("translate: {e}"))?;
-    let code = dxc::compile(&t.hlsl, &dxc::profile_for(t.profile)).map_err(|e| format!("dxc: {}", e.lines().take(3).collect::<Vec<_>>().join(" | ")))?;
+    let fast: &[&str] = if std::env::var_os("TOMBOX_SWEEP_FAST_FMA").is_some() { &["-D", "TB_FAST_FMA"] } else { &[] };
+    let code = dxc::compile_with(&t.hlsl, &dxc::profile_for(t.profile), fast).map_err(|e| format!("dxc: {}", e.lines().take(3).collect::<Vec<_>>().join(" | ")))?;
     Ok((code, gpu::uav_layout(&t.hlsl), t.hlsl))
 }
 

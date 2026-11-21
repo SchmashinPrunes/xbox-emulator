@@ -179,3 +179,120 @@ pub unsafe extern "C" fn XbtpOpenPipeSession(path: *const u16, extension: *const
 pub unsafe fn delete_connection(c: *mut XbtpConnection) {
     connection_delete(c);
 }
+
+pub const OPEN_OPTIONS_SIZE: u32 = 0x58;
+pub const OPEN_OPTIONS_SIZE_V1: u32 = 0x44;
+pub const SESSION_KEY_CHARS: usize = 0x20;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct XBTP_OPEN_SESSION_OPTIONS {
+    pub size: u32,
+    pub session_key: [u16; SESSION_KEY_CHARS],
+    pub skip_ready_check: u32,
+    pub allow_unneeded_key: u32,
+    pub quiet: u32,
+    pub reserved: u32,
+    pub timeout_ms: u32,
+}
+
+impl Default for XBTP_OPEN_SESSION_OPTIONS {
+    fn default() -> Self {
+        XBTP_OPEN_SESSION_OPTIONS { size: OPEN_OPTIONS_SIZE, session_key: [0; SESSION_KEY_CHARS], skip_ready_check: 0, allow_unneeded_key: 0, quiet: 0, reserved: 0, timeout_ms: 0 }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn XbtpOpenSessionEx2(address: *const u16, port: u32, options: *const XBTP_OPEN_SESSION_OPTIONS, extension: *const GUID, iid: *const GUID, out: *mut *mut c_void) -> HRESULT {
+    if out.is_null() {
+        return E_INVALIDARG;
+    }
+    let mut key: *const u16 = core::ptr::null();
+    let mut hs = crate::handshake::HandshakeOptions { skip_ready_check: false, allow_unneeded_key: false };
+    let mut quiet = false;
+    let mut timeout = DEFAULT_TIMEOUT_MS;
+    if !options.is_null() {
+        let size = (*options).size;
+        if size != OPEN_OPTIONS_SIZE && size != OPEN_OPTIONS_SIZE_V1 {
+            return E_INVALIDARG;
+        }
+        key = (*options).session_key.as_ptr();
+        if size == OPEN_OPTIONS_SIZE {
+            hs.skip_ready_check = (*options).skip_ready_check != 0;
+            hs.allow_unneeded_key = (*options).allow_unneeded_key != 0;
+            quiet = (*options).quiet != 0;
+            if (*options).timeout_ms != 0 {
+                timeout = (*options).timeout_ms;
+            }
+        }
+    }
+    let hr = crate::xbtp2_sys::XbtpInitialize();
+    if hr < 0 {
+        return hr;
+    }
+    let mut raw: *mut XbtpSession = null_mut();
+    let hr = XbtpOpenSessionInternal(extension, address, port, &mut raw, quiet, timeout);
+    if hr < 0 {
+        return hr;
+    }
+    let session = match SharedPtr::new_with(raw, drop_session) {
+        Some(s) => s,
+        None => {
+            session_delete(raw);
+            return E_OUTOFMEMORY;
+        }
+    };
+    let imp = crate::session_impl::new_session_impl(session) as *mut c_void;
+    let hr = crate::xbtp2_ext::com_qi(imp, iid, out);
+    if hr < 0 {
+        crate::xbtp2_ext::com_release(imp);
+        return hr;
+    }
+    let hr = crate::handshake::client_handshake(imp, key, &hs);
+    crate::xbtp2_ext::com_release(imp);
+    hr
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn XbtpOpenSessionEx(address: *const u16, port: u32, extension: *const GUID, iid: *const GUID, out: *mut *mut c_void) -> HRESULT {
+    XbtpOpenSessionEx2(address, port, core::ptr::null(), extension, iid, out)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn XbtpOpenSession2(address: *const u16, server_port: u32, options: *const XBTP_OPEN_SESSION_OPTIONS, extension: *const GUID, iid: *const GUID, out: *mut *mut c_void) -> HRESULT {
+    let port = match get_server_port(server_port) {
+        Ok(p) => p,
+        Err(hr) => return hr,
+    };
+    XbtpOpenSessionEx2(address, port, options, extension, iid, out)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn XbtpOpenSession(address: *const u16, server_port: u32, extension: *const GUID, iid: *const GUID, out: *mut *mut c_void) -> HRESULT {
+    let mut opts = XBTP_OPEN_SESSION_OPTIONS::default();
+    let mut prefix: BSTR = null_mut();
+    let mut addr = address;
+    if !address.is_null() {
+        let n = wcslen(address);
+        let s = core::slice::from_raw_parts(address, n);
+        if let Some(i) = s.iter().position(|&c| c == b'+' as u16) {
+            let tail = &s[i + 1..];
+            if tail.len() >= SESSION_KEY_CHARS {
+                return 0x8007_0057u32 as i32;
+            }
+            opts.session_key[..tail.len()].copy_from_slice(tail);
+            if i != 0 {
+                prefix = SysAllocStringLen(address, i as u32);
+                if prefix.is_null() {
+                    return E_OUTOFMEMORY;
+                }
+            }
+            addr = prefix;
+        }
+    }
+    let hr = XbtpOpenSession2(addr, server_port, &opts, extension, iid, out);
+    if !prefix.is_null() {
+        SysFreeString(prefix);
+    }
+    hr
+}

@@ -664,10 +664,37 @@ pub fn norm16(v: f64, signed: bool, nan: bool) -> Option<u32> {
         return Some(0);
     }
     let r = if signed { v.clamp(-1.0, 1.0) * 32767.0 } else { v.clamp(0.0, 1.0) * 65535.0 };
-    if (r - r.trunc()).abs() == 0.5 {
-        return None;
+    Some((r.round_ties_even() as i32 as u32) & 0xffff)
+}
+
+const NRM_F32: [u32; 26] = [
+    0x3840_0180, 0x38e0_01c0, 0xb840_0180, 0xb8e0_01c0, 0x37c0_00c0, 0x3860_00e0, 0x3eff_ffff, 0x3f00_0001, 0x3f00_0000, 0xbf00_0000, 0x3f80_0000, 0xbf80_0000, 0x3f80_0001,
+    0xbf80_0001, 0x7f80_0000, 0xff80_0000, 0x7fc0_0000, 0xffc0_0000, 0x7f80_0001, 0xff80_0001, 0x8000_0000, 0x0000_0001, 0x807f_ffff, 0x3eff_fffe, 0x3f7f_ffff, 0xbf7f_ffff,
+];
+const NRM_F16: [u32; 24] = [
+    0x3801, 0x3802, 0x3803, 0x3804, 0xb801, 0xb802, 0x37ff, 0x3800, 0xb800, 0x3c00, 0xbc00, 0x3c01, 0xbc01, 0x7c00, 0xfc00, 0x7e00, 0xfe00, 0x7c01, 0xfc01, 0x8000, 0x0001, 0x83ff,
+    0x3bff, 0xbbff,
+];
+const NV: u32 = 40;
+
+fn norm_edges(s: &mut Suite) {
+    for (m, op, signed) in [("v_cvt_norm_i16_f16", 0x63u32, true), ("v_cvt_norm_u16_f16", 0x64, false)] {
+        for &a in NRM_F16.iter() {
+            s.add(m, "VOP1", &format!("e32 edge {a:#06x}"), Class::F16, &[vmov(OUT, v(12)), vmov(NV, LIT), 0xabcd_0000 | a], &[vop1(op, OUT, v(NV))], &[], &[Cmp::X], move |x| on(norm16(h(a), signed, nan16(a)).map(|r| (x.d[2] & 0xffff_0000) | r)));
+        }
     }
-    Some((r.round() as i32 as u32) & 0xffff)
+    for (m, op, signed) in [("v_cvt_pknorm_i16_f16", 0x312u32, true), ("v_cvt_pknorm_u16_f16", 0x313, false)] {
+        for p in NRM_F16.chunks(2) {
+            let (a, b) = (p[0], p[1]);
+            s.add(m, "VOP3", &format!("edge {a:#06x},{b:#06x}"), Class::F16, &[vmov(NV, LIT), 0xabcd_0000 | a, vmov(NV + 1, LIT), 0x1234_0000 | b], &vop3(op, OUT, [v(NV), v(NV + 1), 0]), &[], &[Cmp::X], move |_| on(norm16(h(a), signed, nan16(a)).zip(norm16(h(b), signed, nan16(b))).map(|(x, y)| x | (y << 16))));
+        }
+    }
+    for (m, op, signed) in [("v_cvt_pknorm_i16_f32", 0x368u32, true), ("v_cvt_pknorm_u16_f32", 0x369, false)] {
+        for p in NRM_F32.chunks(2) {
+            let (a, b) = (p[0], p[1]);
+            s.add(m, "VOP3", &format!("edge {a:#010x},{b:#010x}"), Class::F32, &[vmov(NV, LIT), a, vmov(NV + 1, LIT), b], &vop3(op, OUT, [v(NV), v(NV + 1), 0]), &[], &[Cmp::X], move |_| on(norm16(f(a) as f64, signed, nan32(a)).zip(norm16(f(b) as f64, signed, nan32(b))).map(|(x, y)| x | (y << 16))));
+        }
+    }
 }
 
 fn i3(s: &mut Suite, m: &'static str, op: u32, class: Class, f: F3) {
@@ -1065,6 +1092,7 @@ pub fn add(s: &mut Suite) {
     vop1_ops(s);
     sdwa_ops(s);
     vop3_ops(s);
+    norm_edges(s);
     for (m, why) in [
         ("v_readfirstlane_b32", "cross-lane: per-lane record harness cannot observe; lane model treats it as a copy (used by every SALU case)"),
         ("v_readlane_b32", "cross-lane; covered by tests/exec_vop/lanes.rs"),

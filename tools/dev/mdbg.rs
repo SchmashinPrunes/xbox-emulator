@@ -5,6 +5,9 @@
 use std::ffi::c_void;
 use std::collections::BTreeMap;
 
+#[path = "mdbg_heap.rs"]
+mod heap;
+
 type HANDLE = isize;
 
 #[repr(C)]
@@ -231,6 +234,7 @@ fn main() {
                     // The debug string includes its NUL terminator (and usually a newline).
                     let s = s.replace('\0', "");
                     println!("[ODS] {}", s.trim_end_matches(['\n', '\r']));
+                    heap::on_ods(hproc, evt.tid, exe_base, tids.len(), &s, &modules);
                 }
             }
             1 => { // EXCEPTION. Record: code@0, addr@16, NumParams@24, Info[0]@32, Info[1]@40, firstChance@152
@@ -307,6 +311,7 @@ fn main() {
                         } else { String::from_utf8_lossy(&buf[..got]).into_owned() };
                         let s = s.trim_end_matches(['\0','\n','\r']);
                         println!("[ODS] {s}");
+                        heap::on_ods(hproc, evt.tid, exe_base, tids.len(), s, &modules);
                     }
                     status = DBG_CONTINUE;
                 } else {

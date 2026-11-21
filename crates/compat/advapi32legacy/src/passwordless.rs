@@ -9,6 +9,8 @@ pub const RPC_C_AUTHN_LEVEL_PKT_PRIVACY: u32 = 6;
 pub const RPC_C_AUTHN_WINNT: u32 = 10;
 pub const RPC_C_AUTHN_NETLOGON: u32 = 0x44;
 pub const ERROR_ACCESS_DENIED: u32 = 5;
+pub const RPC_S_PROTSEQ_NOT_SUPPORTED: u32 = 0x6a7;
+pub const RPC_S_PROCNUM_OUT_OF_RANGE: u32 = 0x6d1;
 pub const STATUS_UNSUCCESSFUL: NtStatus = 0xC000_0001u32 as i32;
 pub const E_NOTIMPL: i32 = 0x8000_4001u32 as i32;
 
@@ -55,6 +57,7 @@ pub struct TitleToken {
     pub user: String,
     pub groups: Vec<String>,
     pub is_app_container: bool,
+    pub membership_error: u32,
 }
 
 impl TitleToken {
@@ -63,6 +66,7 @@ impl TitleToken {
             user: "S-1-5-18".to_string(),
             groups: vec!["S-1-5-32-544".to_string(), "S-1-1-0".to_string(), SID_AUTHENTICATED_USERS.to_string()],
             is_app_container: false,
+            membership_error: 0,
         }
     }
 
@@ -79,18 +83,16 @@ pub fn opnum_policy(opnum: u16) -> Option<OpnumPolicy> {
     }
 }
 
-pub fn security_callback(call: &CallAttributes, token: &TitleToken) -> u32 {
+pub fn security_callback(call: &CallAttributes, policy: Option<OpnumPolicy>, token: &TitleToken) -> u32 {
     if call.opnum >= 0x81 {
-        return ERROR_ACCESS_DENIED;
+        return RPC_S_PROCNUM_OUT_OF_RANGE;
     }
-    let Some(p) = opnum_policy(call.opnum) else {
-        return ERROR_ACCESS_DENIED;
-    };
+    let p = policy.unwrap_or(OpnumPolicy { protseq_mask: 0, flags: 4 });
     if p.flags & 4 != 0 {
-        return ERROR_ACCESS_DENIED;
+        return RPC_S_PROCNUM_OUT_OF_RANGE;
     }
-    if call.protocol_sequence >= 32 || p.protseq_mask & (1 << call.protocol_sequence) == 0 {
-        return ERROR_ACCESS_DENIED;
+    if p.protseq_mask & (1u32 << (call.protocol_sequence & 31)) == 0 {
+        return RPC_S_PROTSEQ_NOT_SUPPORTED;
     }
     if p.flags & 1 != 0 && call.is_client_local != 1 {
         return ERROR_ACCESS_DENIED;
@@ -101,13 +103,16 @@ pub fn security_callback(call: &CallAttributes, token: &TitleToken) -> u32 {
     if p.flags & 2 == 0 {
         return 0;
     }
-    if call.authentication_service == RPC_C_AUTHN_NETLOGON {
-        return ERROR_ACCESS_DENIED;
+    if call.authentication_service == RPC_C_AUTHN_NETLOGON && call.authentication_level >= 5 {
+        return 0;
+    }
+    if token.membership_error != 0 {
+        return token.membership_error;
     }
     if !token.check_membership(SID_AUTHENTICATED_USERS) {
         return ERROR_ACCESS_DENIED;
     }
-    if token.is_app_container {
+    if token.is_app_container && p.flags & 8 == 0 {
         return ERROR_ACCESS_DENIED;
     }
     0
@@ -246,7 +251,7 @@ pub fn client_exception_status(code: u32) -> NtStatus {
 }
 
 pub fn lsarpc_call(h: &Hklm, opnum: u16, call: &CallAttributes, token: &TitleToken) -> NtStatus {
-    let denied = security_callback(call, token);
+    let denied = security_callback(call, opnum_policy(opnum), token);
     if denied != 0 {
         return client_exception_status(denied);
     }
