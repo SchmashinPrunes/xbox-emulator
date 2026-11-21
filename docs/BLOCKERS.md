@@ -340,11 +340,40 @@ elease`, the log shows one install and every interface is emulated.
 
 ## D3D12.x device slots (emulator, all titles) - 2026-11-21, dev-b
 - DONE (one unit inferred), Device slot 68 = GetGpuHardwareConfigurationX(D3D12XBOX_GPU_HARDWARE_CONFIGURATION*), d3d-dev68. Layout {UINT64 GpuFrequency; HardwareVersion; UINT32 GpuCuCount}: the name and field order come from the Microsoft Xbox-GDK-Samples/Xbox-ATG-Samples SystemInfo sample (it prints GpuFrequency with %llu) and the WinDurango d3d11_x.g.h reconstruction of D3D11X_GPU_HARDWARE_CONFIGURATION, whose HardwareVersion enum 0..3 (One/One S/One X/One X devkit) matches the existing Xbox One console-type mapping. Kernel source: xgskmd10.sys 0x332e / xgskmd.sys 0x36b5 copy u64 [R+0x45a050] / [R+0x9a050] from a firmware-shared region that no dumped binary writes. Xbox One xgs12 0x485f0 copies reply[0..8] and reply[12..16]. Scarlett xgs12_10 0x4eba0 (device vtable 0x125c70) sends the IOCTL itself, copies only reply[0..8], and only when the call succeeds with 0x10 bytes returned; GpuCuCount stays 0. GpuFrequency is now the public GPU clock in Hz: 853/914/1172/1172/1565/1825/1825 MHz for device types 2..8 (crates/compat/d3d12_xs/src/gpu_hw_config.rs). Still open: no console or title binary reads GpuFrequency (checked xgs12, xgs12_10, pixrt 0x11ce8 / VdGetGpuHardwareConfiguration, and the title EXEs of Fortnite, Terraria, Trackmania and XDefiant), so the Hz unit is inferred and not observed. The One X devkit and Series X devkit clocks are assumed to equal retail.
-- OPEN, in-process XgsKmd emulation (crates/compat/xgs-kmd-emu, d3d-dev68): the PixGetPixieEntryPoints wrappers in d3d12_xs (kmd10.rs) and d3d12_x (xgs_kmd.rs, pixie.rs) now open an emulated device handle instead of \\.\XgsKmd10 / \\.\XgsKmd, and send DeviceIoControl to it. Modeled IOCTLs:
-  - 0x7900c190 handshake: per-process reference count, xgskmd10 0x3011.
-  - 0x7900c194 release: decrements that count, xgskmd10 0x2fe8.
-  - 0x7900c1fc GPU hardware configuration: the same 16 bytes as Device slot 68; an output buffer under 0x10 bytes fails with ERROR_INSUFFICIENT_BUFFER, like the kernel's STATUS_BUFFER_TOO_SMALL.
-  Every other IOCTL fails with ERROR_NOT_SUPPORTED and is logged once. That includes 0x7900c1f8 (driver level) and 0x7900c23b (page pool). Device slots 72 and 74 keep their own per-device state in d3d12_xs, while the kernel's state is per process, so they are not shared through the emulated KMD yet. Also unmodeled: c19c, c1ec, c1a8, c1e0, c198, c1b0, c20b, c207, c20f, c1bb, c1cb, c23f, c21b, c1af, c24b, c24f, c1a7, c237, c233, c26f, c273, c217, c27f, c283, c287, c1a3, c28f, c223 (microcode upload) and c1cc (memory profiling); each needs its kernel handler ported first. The console pixrt.dll's own VdGetGpuHardwareConfiguration (pixrt 0x11ce8 -> 0x38270 / 0x381a8) calls CreateFileW / DeviceIoControl directly, but the emulator replaces pixrt.dll with crates/compat/pixrt, which has no such path. Reaching it would need \\.\XgsKmd10 routed in the kernelbase CreateFileW / DeviceIoControl compat.
+- OPEN, in-process XgsKmd emulation (crates/compat/xgs-kmd-emu, d3d-dev68, updated 2026-11-21). One owner per process: the first copy of the crate to run publishes a #[repr(C)] KmdApi table through env TOMBOX_XGSKMD_OWNER="{pid:x}:{addr:x}", serialized by the named mutex Local\tombox-xgskmd-<pid> (compat-common/src/kmd_bridge.rs). Every compat DLL's copy routes to that table, so the state is per process like the kernel's. D3D12XboxCreateDevice in d3d12_x and d3d12_xs publishes it.
+  - Title modules: IAT hooks for CreateFileW("\\.\XgsKmd10" / "\\.\XgsKmd"), DeviceIoControl and CloseHandle are added to the gdk/hook.rs title list. They chain after the fs.rs CreateFileW hook and fall through to the original call for any other path or handle. They are OFF by default and turned on with console_kmd_route=1 (env TOMBOX_CONSOLE_KMD_ROUTE=1). On a Scarlett console the open succeeds, so pixevt and xgs12_10 would pick pixrt10.dll, whose PixDllInitializeFromTitle is still unported (see the pixrt section). It stays opt-in until that is ported. A loader that probes before D3D12XboxCreateDevice publishes the owner still falls through to the real CreateFileW.
+  - Modeled, with the xgskmd10 handler address:
+    - c190 0x3011: creates the process entry (0x40b8) and counts handshakes.
+    - c194 0x2fe8: no entry gives 87; otherwise decrements the count.
+    - c1f8 0x3282: input under 4 bytes gives 122; otherwise stores the value, which the kernel posts with XvioPostMessage(2,1,0x1a3).
+    - c1fc: the 16 bytes of slot 68.
+    - c23b 0x1094c: METHOD_NEITHER page pool:
+      - Register: probes [va, va+pages<<16) for writable committed memory (MmProbeAndLockPages IoModifyAccess) and returns a new handle for every call, duplicates included. A failed probe gives 8 and writes 0.
+      - Unregister: handle 0 or an unknown handle gives 87.
+      - A misaligned or unwritable out pointer gives 998, and no process entry gives 8.
+    - c19c 0x278c: per-process options.
+    - c227 0x3610: clears the fault hold.
+    - c22f 0x10c20: multiset of keys.
+    - c26f 0x10af4: looks up a page pool.
+    - c27f 0x3f13: last GPU error.
+    - c1af 0x3051: always STATUS_NO_MEMORY.
+    - c1cc 0x30e1: input under 0x18 bytes gives 122; otherwise creates the entry and stores the 24-byte memory-profiling config.
+  - Device slot 72 sends c1f8 through the emulated handle (d3d12_xs/src/kmd_slots.rs). Slots 74/75 send c23b; the handle is now a u64 the kernel writes. Duplicate registrations now get distinct handles, and a range that is not committed and writable now fails with E_FAIL, as on the console.
+  - Unmodeled, each failing with ERROR_NOT_SUPPORTED, with the reason:
+    - XVIO/firmware messages or ring writes: c1bb, c25f, c20f, c1c4, c257, c253, c207.
+    - GPU command submission: c1a7, c20b, c1b0.
+    - GPU page tables or console memory APIs (MmConfigureGraphicsPtes, MmAllocatePagesForMdlEx): c237, c277, c233, c1cb, c273, c217, c198, c1f0.
+    - Counters or interrupt-filled logs:
+      - c213: GPU timestamp register at adapter+0x18 +0x1000.
+      - c25b: counter history at adapter+0x1fb8.
+      - c23f and c263: fault log at global+0xd8.
+    - Hypervisor: c283 needs CPUID 0x40000007 and MSR 0x40000041.
+    - c1a3: GPU VMID from the adapter pool at adapter+0x60. The init values were not found.
+    - c1a8: firmware heartbeat (0x8668).
+    - c1e0: the GPU timestamp (0x28e4), the same source as c213.
+    - c21f: KeInvalidateAllCaches, a CPU cache flush for GPU coherence that user mode has no equivalent for.
+    - c287: copies a 0x50-byte firmware table at adapter[+0x3880]+0x45a070.
+    - Not analyzed yet: c1ec, c21b, c223 (microcode upload), c24b, c24f, c267.
 - DONE 2026-11-21 d3d-perf, Device slot 82 CreateCounterSetX (crates/compat/d3d12_xs/src/perfctr.rs). The Xbox One counter set is ported from xgs12 0x48f90 / ctor 0x572ac / per-block builder 0x5712c / vtable 0x93b20, and the slot returns S_OK. Method 8 gives the sample size. Method 9 resolves into {0x1ef8, 2} plus 0xFF fill. The CommandList 100-102 sampling side is d3d-perfcl's perfctr_cl.rs. Remaining:
   - OPEN: only selects that count every clock have a PC source: GRBM sel 0, and CPF/CPG/CPC sel 0. They are GPU timestamp deltas times the console engine clock from pixrt.dll 0x6fe1-0x7012. Every other select stays 0xFF in the resolve, the console's own "not sampled" value. The console samples each instance x shader engine (SE) separately through GRBM_GFX_INDEX, while PC pipeline statistics and NVPerf only give device totals. Splitting a total per SE would invent values. The single-instance Durango blocks (IA, WD, GDS) have no gfx7 select that matches a pipeline statistic.
   - DONE 2026-11-21 d3d-perf, Scarlett (crates/compat/d3d12_xs/src/perfctr_xs.rs). xgs12_10 0x4f8c0 returns E_NOTIMPL unless d:\D3D__RetailGpuCounters exists (flag 0x23f264, set at 0x9f08), and that stays the default. With the file present, the counter set is ported:
