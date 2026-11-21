@@ -69,3 +69,30 @@ mismatches. The Rust model in the tests matched all 5.0M load and 14.4M store el
 **Partial stores (d16 and 32-bit):** storing fewer components than the format has writes the whole
 element, with the missing components as 0. For example, `tbuffer_store_format_x` of 0.25 to
 `8_8_8_8_UNORM` writes `40 00 00 00`.
+
+## VALU / SALU probes (`valu_probe.py`)
+
+Same runner and kernel preamble, for questions outside MTBUF that the ISA text leaves open:
+
+- `fma16`: are VOP2 0x36 / 0x37 / 0x38 fused (`v_fmac_f16` / `v_fmamk_f16` / `v_fmaak_f16`, as LLVM
+  names them for GFX10) or multiply-then-add? Each kernel also runs `v_fma_f16` and
+  `v_mul_f16` + `v_add_f16` on the same inputs, so both references come from the hardware.
+- `sbfe`: `s_bfe_{u,i}{32,64}` with a width field of 32 or more (64 or more for the 64-bit forms) and
+  junk in the unused bits of S1. `show` compares three candidates: 7-bit width with sign-fill past the
+  top bit, 7-bit width with the literal ISA formula (zero-fill), and width modulo the operand size.
+- `nan`: which NaN `v_fma_f32`, `v_mul_f32`, `v_add_f32`, `v_sub_f32`, `v_fmac_f32`, `v_min_f32` and
+  `v_max_f32` return, with IEEE mode off and on.
+- `norm`: rounding, NaN and range handling of `v_cvt_pknorm_{i,u}16_{f32,f16}` and
+  `v_cvt_norm_{i,u}16_f16`.
+
+```
+python3 tools/rdna2-hwprobe/valu_probe.py gen /tmp/valu
+clang-18 -x assembler -target amdgcn-amd-amdhsa -mcpu=gfx1036 -c /tmp/valu/k.s -o /tmp/valu/k.o
+ld.lld-18 -shared /tmp/valu/k.o -o /tmp/valu/k.co
+<runner built by run.sh> /tmp/valu
+python3 tools/rdna2-hwprobe/valu_probe.py show /tmp/valu
+```
+
+Status: **not yet run on hardware.** The 33 kernels assemble with LLVM 18 and disassemble identically
+for gfx1036 and gfx1013. `show` was checked against simulated outputs for both answers to each
+question. No results are recorded here until someone runs it on an RDNA2 GPU.
