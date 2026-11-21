@@ -182,7 +182,7 @@ fn oracle_dcc_enc_e2e() {
     let cdec: DecF = unsafe { core::mem::transmute(o.f("XGDecodeDCC")) };
     let st = states();
     let mut r = Rng(0xe2e_e4c_31);
-    let (mut calls, mut blocks, mut bad, mut undef, mut nerr, mut faults, mut rt, mut rtbad, mut lossy, mut residue) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+    let (mut calls, mut blocks, mut bad, mut undef, mut nerr, mut faults, mut rt, mut rtbad, mut lossy) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
     let mut extra: Vec<(u32, u32, u32, u32, u32)> = configs();
     extra.retain(|_| r.below(30) == 0);
     let mut cfgs: Vec<(u32, u32, u32, u32, u32)> = st.iter().map(|x| x.0).collect();
@@ -206,10 +206,6 @@ fn oracle_dcc_enc_e2e() {
             let mut nm = vec![0u8; count];
             let mut ns = vec![0u32; count];
             let nr = crate::dcc::encode(count as u32, &src, &mut nd, &mut nm, Some(&mut ns), f, sw, dim, p0, p1);
-            if nr == crate::dcc::E_RESIDUE {
-                residue += 1;
-                continue;
-            }
             if nr != 0 {
                 assert_eq!(nr, E_INVALIDARG);
                 if enc::color_faults(&d) {
@@ -257,7 +253,7 @@ fn oracle_dcc_enc_e2e() {
             }
         }
     }
-    println!("dcc enc e2e: {} XGEncodeDCC calls, {} blocks, {} mismatches, {} console results depending on prior memory, {} native E_INVALIDARG (non-fault), {} color #DE predicted, {} native E_NOTIMPL (unported convert residue), {} round trips, {} native/console decode mismatches, {} lossy round trips", calls, blocks, bad, undef, nerr, faults, residue, rt, rtbad, lossy);
+    println!("dcc enc e2e: {} XGEncodeDCC calls, {} blocks, {} mismatches, {} console results depending on prior memory, {} native E_INVALIDARG (non-fault), {} color #DE predicted, {} round trips, {} native/console decode mismatches, {} lossy round trips", calls, blocks, bad, undef, nerr, faults, rt, rtbad, lossy);
     assert_eq!(bad, 0);
     assert_eq!(undef, 0);
     assert_eq!(rtbad, 0);
@@ -283,17 +279,119 @@ fn reject_cause(d0: &Dcc, inp: &[u8; 256]) -> &'static str {
     if enc::color_faults(&d) {
         return "color #DE";
     }
-    let _ = enc::color(&mut d);
+    let _ = enc::color_in(&mut d, &mut t);
     if enc::relay_in(&mut d, 2, 2, 3, &mut t).is_err() {
         return "relayout mode2->3 hole";
     }
-    let steps: [(&'static str, fn(&mut Dcc) -> Result<(), i32>); 7] = [("delta", enc::delta), ("vrs", enc::vrs), ("choose", enc::choose), ("far", enc::far), ("far base", enc::subbed), ("plan", enc::plan), ("pack", enc::pack)];
+    let steps: [(&'static str, fn(&mut Dcc) -> Result<(), i32>); 7] = [("delta", enc::delta), ("vrs convert 0x4adc0 hole", enc::vrs), ("choose", enc::choose), ("far", enc::far), ("far base", enc::subbed), ("plan", enc::plan), ("pack", enc::pack)];
     for (n, f) in steps {
         if f(&mut d).is_err() {
             return n;
         }
     }
     "none"
+}
+
+#[inline(never)]
+fn drive_plain(c: &Con) -> Dcc {
+    c.call1(0x26220);
+    c.pull()
+}
+
+#[inline(never)]
+fn drive_deep(c: &Con) -> Dcc {
+    let mut pad = [0u8; 0x2340];
+    for x in pad.iter_mut() {
+        unsafe { core::ptr::write_volatile(x, 0x77) };
+    }
+    c.call1(0x26220);
+    let p = c.pull();
+    unsafe { core::ptr::read_volatile(&pad[0x1233]) };
+    p
+}
+
+#[inline(never)]
+fn drive_regs(c: &Con, v: u64) -> Dcc {
+    let f = c.h + 0x26220;
+    let obj = c.p();
+    unsafe {
+        core::arch::asm!(
+            "push rbx", "push rsi", "push rdi", "push r12", "push r13", "push r14", "push r15", "push rbp",
+            "mov rbp, rsp", "and rsp, -16", "sub rsp, 32",
+            "mov rbx, rdx", "mov rsi, rdx", "mov rdi, rdx", "mov r12, rdx", "mov r13, rdx", "mov r14, rdx", "mov r15, rdx",
+            "call rax",
+            "mov rsp, rbp",
+            "pop rbp", "pop r15", "pop r14", "pop r13", "pop r12", "pop rdi", "pop rsi", "pop rbx",
+            inout("rax") f => _, inout("rcx") obj => _, inout("rdx") v => _, clobber_abi("system"),
+        );
+    }
+    c.pull()
+}
+
+fn caller_outputs(c: &Con, s: &Dcc) -> Vec<(Vec<u8>, u8)> {
+    let mut v = Vec::new();
+    for k in 0..4 {
+        c.push(s);
+        let _ = smear(0x77);
+        let p = match k {
+            0 => drive_plain(c),
+            1 => drive_deep(c),
+            2 => drive_regs(c, 0x1111_2222_3333_4444),
+            _ => drive_regs(c, 0x0000_0000_0000_0003),
+        };
+        v.push((p.b[1].to_vec(), p.r8(0x58)));
+    }
+    v
+}
+
+extern "system" {
+    fn VirtualProtect(addr: *mut core::ffi::c_void, size: usize, prot: u32, old: *mut u32) -> i32;
+}
+
+static REAL_VSPRINTF: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PAD: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+type Vsp = unsafe extern "system" fn(u64, *mut u8, usize, *const u8, usize, usize) -> i32;
+
+#[inline(never)]
+unsafe extern "system" fn deep_vsprintf(o: u64, b: *mut u8, n: usize, f: *const u8, l: usize, a: usize) -> i32 {
+    let mut pad = [0u8; 0x700];
+    let v = PAD.load(std::sync::atomic::Ordering::SeqCst);
+    for (i, x) in pad.iter_mut().enumerate() {
+        let w = if v & 1 != 0 { v ^ (i as u8).wrapping_mul(0x3b) } else { v };
+        core::ptr::write_volatile(x, w);
+    }
+    let real: Vsp = core::mem::transmute(REAL_VSPRINTF.load(std::sync::atomic::Ordering::SeqCst));
+    let r = real(o, b, n, f, l, a);
+    core::ptr::read_volatile(&pad[0x345]);
+    r
+}
+
+fn vsprintf_slot(o: &Oracle) -> *mut usize {
+    let t = (o.h + 0x4e980) as *const u8;
+    unsafe {
+        assert_eq!((*t, *t.add(1)), (0xff, 0x25));
+        let disp = core::ptr::read_unaligned(t.add(2) as *const i32);
+        (o.h as isize + 0x4e986 + disp as isize) as *mut usize
+    }
+}
+
+fn with_deep_crt<R>(o: &Oracle, pad: u8, f: impl FnOnce() -> R) -> R {
+    let slot = vsprintf_slot(o);
+    let mut old = 0u32;
+    unsafe {
+        assert!(VirtualProtect(slot as *mut _, 8, 0x04, &mut old) != 0);
+        REAL_VSPRINTF.store(*slot, std::sync::atomic::Ordering::SeqCst);
+        PAD.store(pad, std::sync::atomic::Ordering::SeqCst);
+        *slot = deep_vsprintf as usize;
+    }
+    let r = f();
+    unsafe {
+        *slot = REAL_VSPRINTF.load(std::sync::atomic::Ordering::SeqCst);
+        let mut o2 = 0u32;
+        VirtualProtect(slot as *mut _, 8, old, &mut o2);
+    }
+    r
 }
 
 #[test]
@@ -304,6 +402,8 @@ fn oracle_dcc_enc_undefined_classes() {
     let mut r = Rng(0x0dd_e4c_5eed);
     let mut seen: std::collections::BTreeMap<&'static str, (u64, u64)> = std::collections::BTreeMap::new();
     let mut same = Vec::new();
+    let mut callers: std::collections::BTreeMap<(&'static str, Option<usize>), u64> = std::collections::BTreeMap::new();
+    let mut crts: std::collections::BTreeMap<(&'static str, bool), u64> = std::collections::BTreeMap::new();
     let mut grp: std::collections::BTreeMap<String, (u64, u64, String)> = std::collections::BTreeMap::new();
     for &((f, sw, dim, p0, p1), _) in &st {
         let mut d = Dcc::new();
@@ -318,7 +418,7 @@ fn oracle_dcc_enc_undefined_classes() {
             if nr == 0 {
                 continue;
             }
-            let cause = if nr == crate::dcc::E_RESIDUE { "unported convert residue (E_NOTIMPL)" } else { reject_cause(&d, &inp) };
+            let cause = reject_cause(&d, &inp);
             if cause == "color #DE" || enc::color_faults(&d) {
                 continue;
             }
@@ -327,7 +427,25 @@ fn oracle_dcc_enc_undefined_classes() {
                 runs.push(console_encode_at(&o, &inp, 1, f, sw, dim, p0, p1, 0xaa, 0xa5, sh));
             }
             let a = runs[0].clone();
-            let b = runs.iter().find(|x| **x != a).cloned().unwrap_or_else(|| a.clone());
+            let mut b = runs.iter().find(|x| **x != a).cloned().unwrap_or_else(|| a.clone());
+            if a == b {
+                let c = Con::new(&o, f, sw, dim, p0, p1).unwrap();
+                let mut s = defined(c.pull());
+                s.b[0] = inp;
+                let w = caller_outputs(&c, &s);
+                let k = (1..w.len()).find(|&k| w[k] != w[0]);
+                *callers.entry((cause, k)).or_insert(0u64) += 1;
+                let crt: Vec<(Vec<u8>, u8)> = [0x11u8, 0xee, 0x00, 0x01, 0x80, 0x7f, 0x02, 0x40, 0x23, 0xc5, 0xfe, 0x5a, 0xaa, 0xf0, 0x0e].iter().map(|&v| with_deep_crt(&o, v, || {
+                    c.push(&s);
+                    let p = drive_plain(&c);
+                    (p.b[1].to_vec(), p.r8(0x58))
+                })).collect();
+                let moved = crt.iter().any(|x| *x != w[0]);
+                *crts.entry((cause, moved)).or_insert(0u64) += 1;
+                if k.is_some() || moved {
+                    b.2 = vec![!a.2[0]];
+                }
+            }
             let e = seen.entry(cause).or_insert((0, 0));
             e.0 += 1;
             let mut hd = copy(&d);
@@ -352,7 +470,13 @@ fn oracle_dcc_enc_undefined_classes() {
         }
     }
     for (c, (n, dif)) in &seen {
-        println!("dcc enc undefined class {}: {} native rejections, {} console outputs changed with stack smear", c, n, dif);
+        println!("dcc enc undefined class {}: {} native rejections, {} console outputs changed with stack smear, buffer address or caller frame/registers", c, n, dif);
+    }
+    for ((c, m), n) in &crts {
+        println!("dcc enc CRT-frame check {}: {} smear/caller-stable cases, output changed when the C runtime's vsprintf ran one frame deeper: {}", c, n, m);
+    }
+    for ((c, k), n) in &callers {
+        println!("dcc enc caller-state check {}: {} smear-stable cases, first differing wrapper {:?}", c, n, k);
     }
     for (k, (n, dif, ex)) in &grp {
         println!("grp {}: {} rejections, {} changed; {}", k, n, dif, ex);
@@ -360,7 +484,7 @@ fn oracle_dcc_enc_undefined_classes() {
     for s in &same {
         println!("dcc enc rejection with stable console output: {}", s);
     }
-    assert!(seen.iter().all(|(c, &(n, d))| if c.starts_with("unported") { d == 0 } else { n == d }));
+    assert!(seen.iter().all(|(_, &(n, d))| n == d));
 }
 
 #[test]
@@ -617,3 +741,4 @@ fn oracle_dcc_enc_color_fault_child() {
     }
     println!("dcc enc color #DE: {} predicted cases raised STATUS_INTEGER_DIVIDE_BY_ZERO in child processes, {} bpe<4 non-fault cases ran without #DE", seen[1], seen[0]);
 }
+

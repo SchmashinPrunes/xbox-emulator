@@ -94,7 +94,7 @@ float tb_cubesc(float x, float y, float z) { float ax = abs(x), ay = abs(y), az 
 float tb_cubetc(float x, float y, float z) { float ax = abs(x), ay = abs(y), az = abs(z); if (az >= ax && az >= ay) return -y; if (ay >= ax) return y < 0.0 ? -z : z; return -y; }
 float tb_cubeid(float x, float y, float z) { float ax = abs(x), ay = abs(y), az = abs(z); if (az >= ax && az >= ay) return z < 0.0 ? 5.0 : 4.0; if (ay >= ax) return y < 0.0 ? 3.0 : 2.0; return x < 0.0 ? 1.0 : 0.0; }
 float3 tb_cube_dir(float s, float t, float face) { float u = (s - 1.5) * 2.0, v = (t - 1.5) * 2.0; int f = (int)round(face); if (f == 0) return float3(1.0, -v, -u); if (f == 1) return float3(-1.0, -v, u); if (f == 2) return float3(u, 1.0, v); if (f == 3) return float3(u, -1.0, -v); if (f == 4) return float3(u, -v, 1.0); return float3(-u, -v, -1.0); }
-int tb_nrm(float v, uint k) { uint b = asuint(v); uint a = b & 0x7fffffffu; if (a < 0x30000000u) return 0; uint sh = 150u - (a >> 23); uint64_t p = (uint64_t)((a & 0x7fffffu) | 0x800000u) * (uint64_t)k; uint64_t q = p >> sh; uint64_t rem = p - (q << sh); uint64_t hf = ((uint64_t)1) << (sh - 1u); if (rem > hf || (rem == hf && (q & 1u) != 0u)) q += 1u; int r = (int)(uint)q; return (b >> 31) != 0u ? -r : r; }
+int tb_nrm(float v, uint k) { uint b = asuint(v); uint a = b & 0x7fffffffu; if (a < 0x30000000u) return 0; uint sh = 150u - (a >> 23); uint m = (a & 0x7fffffu) | 0x800000u; uint lo = m * k; uint hi = tb_mulhi_u32(m, k); uint q, rh, rl, hh, hl; if (sh >= 32u) { q = hi >> (sh - 32u); rh = hi & ((1u << (sh - 32u)) - 1u); rl = lo; } else { q = (lo >> sh) | (hi << (32u - sh)); rh = 0u; rl = lo & ((1u << sh) - 1u); } if (sh >= 33u) { hh = 1u << (sh - 33u); hl = 0u; } else { hh = 0u; hl = 1u << (sh - 1u); } bool gt = rh > hh || (rh == hh && rl > hl); bool eq = rh == hh && rl == hl; if (gt || (eq && (q & 1u) != 0u)) q += 1u; int r = (int)q; return (b >> 31) != 0u ? -r : r; }
 float tb_rev(float x) { return (abs(x) < 0.5) ? x : x - round(x); }
 float tb_ldexp32(float x, int e) { int k = clamp(e, -330, 330); return (float)((double)x * asdouble(0u, (uint)(k + 1023) << 20)); }
 float tb_rto(double s) { float f = (float)s; if ((double)f != s) { uint u = asuint(f); if (abs((double)f) > abs(s)) u -= 1u; f = asfloat(u | 1u); } return f; }
@@ -2307,11 +2307,6 @@ impl<'a> Emitter<'a> {
                     open = true;
                 }
                 cur = active;
-            }
-            if open && self.is_ms() && self.loop_depth == 0 && ins.enc == Enc::Sopp && ins.op == 0x0a {
-                self.line("}");
-                open = false;
-                cur.clear();
             }
             for o in ins.src.iter().chain(ins.dst.iter()) {
                 self.touch(o);

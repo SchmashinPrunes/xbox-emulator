@@ -35,6 +35,8 @@ pub mod shader_cache;
 pub(crate) mod d3d;
 #[cfg(windows)]
 pub mod fma_probe;
+#[cfg(test)]
+mod sm5_helpers_tests;
 
 #[cfg(windows)]
 fn dxil_disassembly(dxbc: &[u8]) -> Option<String> {

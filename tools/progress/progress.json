@@ -3104,9 +3104,6 @@
   "tests": []
  },
  "console_pending": {
-  "xbtp.dll": [
-   "?AddPipeEndpoint@XbtpConnectionDispatcher@@QEAAJPEBG@Z"
-  ],
   "d3d12_xs.dll": [
    "D3D12CreateDevice",
    "D3D12XboxCreateDevice",
@@ -3116,7 +3113,10 @@
    "D3D12SerializeRootSignature",
    "D3D12SerializeVersionedRootSignature",
    "D3D12XboxSetProcessDebugFlags",
-   "D3D12XboxCreateDevice"
+   "D3D12XboxCreateDevice",
+   "D3D12CreateRootSignatureDeserializer",
+   "D3D12CreateVersionedRootSignatureDeserializer",
+   "D3D12CreateDevice"
   ],
   "xfrontpaneldisplay.dll": [
    "XFrontPanelGetButtonStates",
@@ -3126,26 +3126,37 @@
   ],
   "minuserx.dll": [
    "GetWindowLongPtrA",
-   "SetWindowLongPtrA"
-  ],
-  "chad.dll": [
-   "XDspActivate"
-  ],
-  "xapu.dll": [
-   "XApuConnect"
+   "SetWindowLongPtrA",
+   "GetWindowLongPtrW",
+   "SetWindowLongPtrW"
   ],
   "GDK XAppCapture (QueryApiImpl)": [
    "XAppCapture(3a949778) slot 4 (diagnostic_clip)"
   ],
   "GDK XAsync/XTaskQueue/XThread (QueryApiImpl)": [
-   "XAsync/XTaskQueue/XThread(073b7dcb, emulated) slot 18 (q_submit)"
+   "XAsync/XTaskQueue/XThread(073b7dcb, emulated) slot 18 (q_submit)",
+   "XTaskQueueTerminate",
+   "XTaskQueueSubmitDelayedCallback"
   ],
   "GDK XPackage (QueryApiImpl)": [
-   "XPackageGetCurrentProcessPackageIdentifier"
+   "XPackageGetCurrentProcessPackageIdentifier",
+   "XPackageCreateInstallationMonitor",
+   "XPackageChangeChunkInstallOrder",
+   "XPackageInstallChunksAsync",
+   "XPackageFindChunkAvailability",
+   "XPackageEnumeratePackages"
   ],
   "GDK XStore (QueryApiImpl)": [
    "XStore(de3dbdd4) slot 35 (fulfill_async)",
-   "XStore(de3dbdd4) slot 36 (fulfill_result)"
+   "XStore(de3dbdd4) slot 36 (fulfill_result)",
+   "XStoreShowPurchaseUIAsync",
+   "XStoreShowRedeemTokenUIAsync",
+   "XStore(de3dbdd4) slot 20 (acquire_package_license_async)",
+   "XStore(de3dbdd4) slot 58 (download_updates_async)",
+   "XStore(de3dbdd4) slot 60 (download_updates_async)",
+   "XStore(de3dbdd4) slot 62 (install_packages_async)",
+   "XStore(de3dbdd4) slot 65 (package_identifier)",
+   "XStore(2d42fea5) slot 71 (acquire_durables_license_async)"
   ],
   "GDK XUser (QueryApiImpl)": [
    "XUserFindUserByLocalId",
@@ -3157,6 +3168,19 @@
   ],
   "xmem.dll": [
    "XMemGetWorkingSetStatistics"
+  ],
+  "xg_xs.dll": [
+   "XGEncodeDCC"
+  ],
+  "mfplat.dll": [
+   "MFGetPlatform"
+  ],
+  "XVMAudioService.dll": [
+   "DllGetClassObject"
+  ],
+  "advapi32legacy.dll": [
+   "ElfRegisterEventSourceW",
+   "ElfDeregisterEventSource"
   ]
  }
 }

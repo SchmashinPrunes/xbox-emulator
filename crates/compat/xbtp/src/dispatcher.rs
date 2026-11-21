@@ -43,6 +43,7 @@ pub const IID_XBTP_SESSION_PROPERTIES: GUID = GUID::new(0xf6e48feb, 0x4135, 0x4a
 pub const IID_XBTP_DISPATCHER: GUID = GUID::new(0xe6358d7e, 0x3b86, 0x425b, [0xb3, 0xd7, 0x3d, 0x21, 0x82, 0xb9, 0x76, 0x6a]);
 pub const IID_XBTP_DISPATCHER_ALT: GUID = GUID::new(0x335b4b4b, 0xc976, 0x4356, [0xa5, 0x6e, 0xc5, 0x01, 0x61, 0xfc, 0x77, 0x40]);
 pub const MAX_SESSION_KEY: usize = 0x20;
+pub const E_PIPE_ALREADY_ADDED: HRESULT = 0x8007_1392u32 as i32;
 
 const ST_DONE: u32 = 0;
 const ST_CONNECT: u32 = 1;
@@ -55,6 +56,7 @@ pub struct DispatcherImpl {
     pub tcp: SharedPtr<XbtpConnection>,
     pub link: SharedPtr<XbtpConnection>,
     pub pipes: Mutex<Vec<SharedPtr<XbtpConnection>>>,
+    pub pipe_paths: Mutex<Vec<Vec<u16>>>,
     pub shutdown: HANDLE,
     pub stopped: HANDLE,
     pub wake: HANDLE,
@@ -128,6 +130,7 @@ pub unsafe extern "C" fn XbtpConnectionDispatcher_Initialize(this: *mut XbtpConn
         tcp: t,
         link: l,
         pipes: Mutex::new(Vec::new()),
+        pipe_paths: Mutex::new(Vec::new()),
         shutdown,
         stopped,
         wake,
@@ -159,7 +162,17 @@ pub unsafe extern "C" fn XbtpConnectionDispatcher_AddPipeEndpoint(this: *mut Xbt
     if hr < 0 {
         return hr;
     }
+    let key: Vec<u16> = if path.is_null() { Vec::new() } else { core::slice::from_raw_parts(path, wcslen(path)).to_vec() };
+    {
+        let mut paths = d.pipe_paths.lock().unwrap();
+        if paths.iter().any(|p| *p == key) {
+            np.release();
+            return E_PIPE_ALREADY_ADDED;
+        }
+        paths.push(key);
+    }
     d.pipes.lock().unwrap().push(np.cast());
+    log_info_args(b"Pipe added %ws\0", &[path as usize]);
     SetEvent(d.wake);
     S_OK
 }

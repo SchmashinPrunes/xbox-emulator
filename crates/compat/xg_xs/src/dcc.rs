@@ -155,8 +155,6 @@ pub unsafe fn decode_export(count: u32, src: *const u8, meta: *const u8, dst: *m
     S_OK
 }
 
-pub(crate) const E_RESIDUE: i32 = compat_common::E_NOTIMPL;
-
 fn enc_try(pre: &Dcc, relay: u8, conv: u8) -> Result<(Dcc, u32), i32> {
     let mut t = Dcc { m: pre.m.clone(), b: pre.b };
     enc::run_with(&mut t, Some([relay; 64]), Some([conv; 64]))?;
@@ -183,12 +181,7 @@ fn enc_block(d: &mut Dcc) -> Result<u32, i32> {
         *d = t;
         return Ok(s);
     }
-    for v in &fills[1..] {
-        if !same(&enc_try(&pre, *v, 0)?, &enc_try(&pre, 0, 0)?) {
-            return Err(E_INVALIDARG);
-        }
-    }
-    Err(E_RESIDUE)
+    Err(E_INVALIDARG)
 }
 
 fn block_size(d: &Dcc) -> Result<u32, i32> {
@@ -240,12 +233,8 @@ pub unsafe fn encode_export(count: u32, src: *const u8, dst: *mut u8, meta: *mut
         core::ptr::copy_nonoverlapping(src.add(i * 256), d.b[0].as_mut_ptr(), 256);
         let size = match enc_block(&mut d) {
             Ok(s) => s,
-            Err(e) if e == E_RESIDUE => {
-                compat_common::record(crate::M, "XGEncodeDCC", &format!("[native E_NOTIMPL] block {} format {} swizzle {} dim {} params {:#x},{:#x}: the console tid convert 0x4adc0 (via 0x28b60/0x28df0) copies 16 never-written bytes of its stack buffer into the block; the console result is repeatable but those bytes are not modelled yet", i, fmt, sw, dim, p0, p1));
-                return e;
-            }
             Err(e) => {
-                compat_common::record(crate::M, "XGEncodeDCC", &format!("block {} format {} swizzle {} dim {} params {:#x},{:#x}: console output for this block is undefined (integer-divide fault in its color stage, or output bytes taken from uninitialised stack memory that change with prior stack contents and buffer addresses), native rejects", i, fmt, sw, dim, p0, p1));
+                compat_common::record(crate::M, "XGEncodeDCC", &format!("block {} format {} swizzle {} dim {} params {:#x},{:#x}: console output for this block is undefined (integer-divide fault in its color stage, or output bytes copied from never-written stack scratch in relayout 0x4ac90 or convert 0x4adc0, whose contents depend on prior stack contents, buffer addresses or the C runtime's vsprintf frame), native rejects", i, fmt, sw, dim, p0, p1));
                 return e;
             }
         };
@@ -266,5 +255,7 @@ mod oracle_px;
 mod oracle_dec;
 #[cfg(test)]
 mod oracle_enc;
+#[cfg(test)]
+mod verify_enc;
 pub mod dec;
 pub mod enc;

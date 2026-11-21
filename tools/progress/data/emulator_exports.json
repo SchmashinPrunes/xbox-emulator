@@ -4143,14 +4143,14 @@
    "XFrontPanelSetLightStates": "implemented"
   },
   "notes": {
-   "XFrontPanelGetButtonStates": "emulated panel buttons (F1-F5 = buttons 1-5, arrows, Enter = select while the panel window has focus)",
-   "XFrontPanelGetLightStates": "returns the 5 light bits last set",
+   "XFrontPanelGetButtonStates": "console 0x1030: XfpTryConnect, on failure returns a second XfpTryConnect result, else XfpGetKeyState(out) via xfp_gc.dll (no null check, as on console)",
+   "XFrontPanelGetLightStates": "console 0x1070: E_INVALIDARG on null, zeroes out, XfpTryConnect then XfpGetLEDState; LED bits 15/13/1/11/9 map to lights 1/2/4/8/0x10; failures return the retried call",
    "XFrontPanelGetScreenDimensions": "64 x 256, E_INVALIDARG on null (matches console)",
    "XFrontPanelGetScreenPixelFormat": "DXGI_FORMAT_R8_UNORM (0x3d) as on console",
    "XFrontPanelIsSupported": "console 0x1220: SUCCEEDED(XFP_GC!XfpTryConnect()); here the compat xfp_gc.dll XfpTryConnect, so true only when its XFP pipe connects and grants",
-   "XFrontPanelPresentBuffer": "console validation (size 0x4000 else E_INVALIDARG, null E_POINTER); frame kept and drawn in a 768x192 panel window (TOMBOX_FRONTPANEL=0 hides it)",
+   "XFrontPanelPresentBuffer": "console 0x1200: size 0x4000 else E_INVALIDARG, null E_POINTER, XfpTryConnect, then XfpSetDisplayBuffer(buf, 8); the frame is mirrored to the 768x192 panel window only after it was sent (TOMBOX_FRONTPANEL=0 hides it)",
    "XFrontPanelSetDisplayName": "E_INVALIDARG on null as on console; name logged and shown in the panel window title",
-   "XFrontPanelSetLightStates": "keeps lights & 0x1f, drawn under the panel, changes logged"
+   "XFrontPanelSetLightStates": "console 0x1100: lights 1/2/4/8/0x10 packed to LED bits 15/13/1/11/9, XfpTryConnect (failure returns the retried connect), then XfpSetLEDState"
   },
   "not_in_built_dll": []
  },
@@ -4222,7 +4222,7 @@
    "XGCreateTextureComputerFromDescriptor": "implemented",
    "XGDecodeDCC": "implemented",
    "XGEnableExclusiveLocking": "implemented",
-   "XGEncodeDCC": "stub",
+   "XGEncodeDCC": "implemented",
    "XGEnterExclusiveLock": "implemented",
    "XGInitializeLibrary": "implemented",
    "XGLeaveExclusiveLock": "implemented",
@@ -4237,7 +4237,7 @@
    "XGCreateTextureComputer": "D3D12 desc to XG desc conversion",
    "XGCreateTextureComputerFromDescriptor": "depth descriptor layouts not modelled, oracle shows remaining mismatches",
    "XGDecodeDCC": "full port of console decoder 0x23210 (unpack, tid swizzle, debase, dedelta, color, signfix, channel, constant, relayout); matches console bytes+hr in oracle_dcc_dec_e2e / oracle_dcc_dec_stages / oracle_dcc_decode_export_shim; native returns E_INVALIDARG (recorded) only where the console output is undefined, proven in oracle_dcc_dec_undefined_classes: color stage integer-divide fault (bpe<4), tid-swizzle convert holes filled from caller stack (incl. return addresses), and segments never written this call (prior buffer bytes); console returns S_OK with junk there and continues, native stops at that block so later blocks are unwritten; negative format rejected (console indexes its format table out of bounds)",
-   "XGEncodeDCC": "encoder 0x26220 ported and matches the console wherever accepted; one config class (bpe 4, swizzle modes 0xf-0x13 with dim 0/3/4) still returns E_NOTIMPL because the tid convert 0x4adc0 copies 16 repeatable but unmodelled stack bytes; see BLOCKERS.md xg_xs XGEncodeDCC"
+   "XGEncodeDCC": "encoder 0x26220 ported (src/dcc/enc.rs) and byte-exact with the console wherever accepted; E_INVALIDARG only for proven-undefined console results (color #DE; relayout 0x4ac90 and convert 0x4adc0 stack-scratch holes whose contents depend on stack, buffer address or the C runtime vsprintf frame); see BLOCKERS.md xg_xs XGEncodeDCC"
   },
   "not_in_built_dll": []
  },
@@ -4803,12 +4803,12 @@
   "file": "crates/compat/xtfdebugmonitor/src/lib.rs",
   "table": "crates/compat/xtfdebugmonitor/exports.txt",
   "functions": {
-   "#4": "missing",
+   "#4": "implemented",
    "XtfCreateDebugMonitorClient": "missing"
   },
   "notes": {
-   "#4": "XtfServerEntryPoint (0x8630) is ported in lib.rs as XtfOrdinal_4 with its tests: extension 9141933c-dca8-43d0-b609-b40709bfe2d5 and metadata IID e2b6c063 checks (E_UNEXPECTED, server.cpp 118/122), the 0x8434 DebugMonitor singleton (E_OUTOFMEMORY at 129), XbtpCreateExtensionMetadata (132) and AddFunction 5 QueryMonitor, 3 MonitorProcess, 2 DetachProcess, 4 ContinueProcess (134-137), with the ProcessDebugEventMonitor worker (DebugActiveProcess/WaitForDebugEvent/ContinueDebugEvent) streaming events through session SendMoreMessage. Not exported until xbtp's operation dispatcher and session object land: MonitorProcess blocks inside DebugClient::Monitor on the session the dispatcher passes in and streams every event through it, and today only the xtfmsg fixture session exists; UPDATE 2026-11-21: xbtp now has the operation dispatcher, server session (SendMoreMessage/ReceiveMoreMessage/GetMessageReceivedEvent) and StartDispatcherEx, so the xbtp dependency is gone; but crates/compat/xtfdebugmonitor/src/lib.rs does not exist on disk (only src/win.rs, crate untracked in git), so XtfOrdinal_4 and its tests are lost and the crate does not build",
-   "XtfCreateDebugMonitorClient": "client factory (0x2150) builds DebugMonitorClient (0x22b4: SplitConsoleAddress(pszAddress, XBTP_PORT_TITLE)) and QueryInterface; every client method opens its session through the statically linked XtfOpenSessionImpl (0xfe4c), which calls xbtp!XbtpOpenSession2 at 0xff34. xbtp exports.txt row 129 XbtpOpenSession2 is missing and its ABI is not recovered, so late binding through xtfmsg::xbtp can only return the GetProcAddress failure"
+   "#4": "console XtfServerEntryPoint 0x8630 (ordinal-only, NONAME): extension id 9141933c-dca8-43d0-b609-b40709bfe2d5 and metadata iid e2b6c063 else E_UNEXPECTED (server.cpp 118/122), DebugMonitor singleton 0x8434 (E_OUTOFMEMORY at 129), XbtpCreateExtensionMetadata (132), AddFunction op 5 QueryMonitor, 3 MonitorProcess, 2 DetachProcess, 4 ContinueProcess (134-137); QueryMonitor builds {Processes:[{ProcessId,IsActive,IsBroken,Clients:[{ClientIdentifier,IsActive}]}]} (166-208) with the console quirk ClientIdentifier = the client's monitoring byte and client IsActive = 1; MonitorProcess reads ProcessId (233/234) and FilterFlags (default 0x100, bit0 adds bit1), null session E_INVALIDARG at 268, DebugMonitor::AddMonitorClient (debugmonitor.cpp 85-104: reuse active ProcessEventMonitor, drop inactive one) then DebugClient::Monitor (debugclient.cpp 52/77) waits on stop/event-ready and sends AttachResult+ClientIdentifier then drains the 256-entry ring through ProcessNextEvent (120-152) and the per-event SendOn* serializers (attach 172-175, exception 195-203, create thread 223-228, create process 248-253, exit thread 273-278, exit process 298-303, load dll 324-341, unload dll 361-366, debug string 387-403, rip 423-429; 64-bit addresses as {L,H}) via session SendMoreMessage; the worker 0x6810 (processdebugeventmonitor.cpp 387-479) does DebugActiveProcess/WaitForDebugEvent/ContinueDebugEvent, reads image and debug-string text with ReadProcessMemory, breaks on exceptions when any client set filter bit0 and waits on the continue event, exits on ForceAll or a detach count and calls DebugActiveProcessStop; DetachProcess (300/301) sets ForceAll, else counts a detach when ClientIdentifier is 0, else signals that client's stop event; ContinueProcess (345-347) stores ExceptionContinue, clears IsBroken and signals the continue event; Detach/Continue reply S_OK with no body when the singleton is absent; deviations: ring entries live on the heap, OutputDebugString copy is clamped to the 0x2000 entry buffer (console copies the reported length unchecked), string reads are bounded, attach result starts as S_OK (console relies on zeroed allocation); tests: tests::export_table_matches_console_dll, server_entry_point_checks_ids_and_registers_four_handlers, server_entry_point_out_of_memory_without_singleton, query_monitor_without_singleton_replies_empty_process_list, query_monitor_reports_console_process_and_client_fields, monitor_process_null_session_fails_invalidarg_at_268, monitor_process_body_errors_and_missing_singleton, detach_process_signals_client_counts_detaches_and_forces_all, continue_process_stores_status_clears_break_and_signals, serializers_follow_filter_gates_and_console_fields, process_next_event_walks_ring_and_wraps_read_head, client_monitor_sends_attach_drains_ring_and_stops, ansi_conversion_matches_set_ansi, entry_strings_are_bounded_by_the_message_buffer, live_monitor_process_streams_events_from_spawned_child and live_break_on_exception_holds_child_until_continue (attach only to a child the test spawns, via the ignored helper debug_child_main, then detach and kill); the worker's reaction to a ClientIdentifier-0 detach count is decoded but only the counter is tested",
+   "XtfCreateDebugMonitorClient": "console 0x2150 (named export): client factory builds DebugMonitorClient (ctor 0x22b4: SplitConsoleAddress(pszAddress, XBTP_PORT_TITLE)) and QueryInterface; each client method opens its session through the statically linked XtfOpenSessionImpl (0xfe4c), which calls xbtp!XbtpOpenSession2 (0xff34). The old XbtpOpenSession2 blocker is cleared: xbtp exports.txt row 129 is now implemented and xtfpix/src/client.rs opens loopback sessions with it. What remains is the client itself, none of it ported yet: the factory and the 0x22b4 constructor/vtable, Start, Stop, PumpDebugMessages and PumpThreadWorker (send op 3 MonitorProcess, then a ReceiveMoreMessage loop that hands AttachResult/EventCode bodies to the caller's callback), the client side of ops 2/4/5, the 0xfe4c open path with its retry codes, and an end-to-end test against this crate's XtfOrdinal_4 over an in-process XbtpStartDispatcherEx loopback dispatcher (xbtp would be a dev-dependency only)"
   }
  },
  "xtfdiaginfo.dll": {
@@ -4846,7 +4846,7 @@
   },
   "notes": {
    "#4": "XbtpServerEntryPoint (console 0x214c0): checks extension GUID 8a8b4d4c-6da2-4fc1-b78c-3e4515cdf8ed and IID_XBTP_EXTENSION_METADATA_IMPL, XbtpCreateExtensionMetadata, 23 AddFunction calls in console order (15 fileio-a handlers + 0x11 stream, 0x19-0x1f transfer); exported as XtfOrdinal_4. 2026-11-21: tests::application_operation_handlers_follow_console_mount_failure fixed on the test side: console PackageMountHoldHandler 0x1ee80 streams Result 0x80070002 through SendMoreMessage and then stores the last step HRESULT (S_OK) into the final reply Result at 0x1f075, so the handler was right; ApplicationOperationsStart/End (0x1eb80) hard-code 0x80070002 after the mount-manager singleton and GetStorageDeviceFreeSpace (0x1f120) returns zero byte counts in the console build itself; cargo test -p xtffileio 28/28",
-   "XtfCreateFileIOClient": "client-side factory (console 0x5d70) for the host-side XtfFileIO client object; not part of the fileio-a/fileio-b server task, not ported"
+   "XtfCreateFileIOClient": "console 0x5d70: new FileIOClient (0x110 bytes, ctor 0x5eb4, SplitConsoleAddress of the address) and QueryInterface; the client object (~20 methods including the multi-message copy/transfer protocols that drive server ops 0x11 and 0x19-0x1f) is not ported, and exporting the factory without every method real would be accept-and-ignore; session/address plumbing to reuse exists in crates/compat/xtfpix/src/client.rs"
   },
   "not_in_built_dll": [
    "#4"
@@ -4868,8 +4868,8 @@
   },
   "notes": {
    "#1": "console 0x10a50: new(nothrow) 0x788-byte PixServer (E_OUTOFMEMORY), ctor nulls *ppv, XbtpCreateExtensionMetadata(e2b6c063), SysMonDataManager::Init (0x40000 buffer), AddHandlers of the 11 embedded handlers (ops 30,1,2,3,6,8,13,19,37,38,39), QI(riid) (2b25ecdb/IUnknown -> self, e2b6c063 -> metadata, AddRef on the server either way), then Release; handler bodies, XtfOperationErrorContext reply errors and the never-stored SysMon flags reproduced from the disassembly",
-   "XtfCreatePixClient": "new PixClient(0x6c0) opens an XBTP session to the console (default address when it matches the built-in one) and runs DoVersionHandshake; needs XbtpOpenSession2, which crates/compat/xbtp exports.txt row 129 still lists as missing; UPDATE 2026-11-21: xbtp rows 128-131 (XbtpOpenSession/2/Ex/Ex2) are now implemented and tested, so this dependency is cleared; the client body itself is not ported yet",
-   "XtfCreatePixClientQuiet": "XtfCreatePixClient with the trace callback silenced; same XbtpOpenSession2 dependency (xbtp exports.txt row 129 missing); UPDATE 2026-11-21: xbtp rows 128-131 (XbtpOpenSession/2/Ex/Ex2) are now implemented and tested, so this dependency is cleared; the client body itself is not ported yet",
+   "XtfCreatePixClient": "console 0xa670: maps \"local\" to \"localhost\" (wcscmp), new PixClient (0x6c0 bytes, vtable 0x1c0f8, ctor SplitConsoleAddress(XBTP_PORT_TITLE)) then DoVersionHandshake; the session plumbing it needs is ported in src/client.rs (SplitConsoleAddress, XtfOpenSessionImpl retry, XtfSendJsonMessage, XtfOperationError results), but the PixClient object itself is not: its ~25 methods (AnnounceTitleProcess, CaptureNextFrame, ConfigureSysMon, DoTimingCapture/Ex, DoVersionHandshake, GetClientVersion, GetConsoleId, GetContinuousTimingCapture, GetFriendlyVersion, GetSysMonConfiguration, ReportFrameCounterData, ReportGraphicsCaptureResult, ReportXmemStatistics, SetPausedState, Start/StopContinuousTimingCapture/Ex, TrackChannelStatusWithFixedToken, TrackGraphicsCaptureRequests, TrackInstrumentedProcesses, TrackSysMonConfiguration) and its 8 streaming handler subobjects (TrackInstrumentedProcesses, CaptureCompleted, SysMonData, SysMonConfigurationChanged, TimingCaptureCompleted, TimingCaptureRangeChanged, ChannelStatusChanged, CaptureNextFrame_Client) are unported, and a partial vtable would be accept-and-ignore; also blocked for end-to-end tests by an xbtp reply mismatch: the xbtp dispatcher hands handlers a plain Message (SetJsonBodyW at slot 7) as the reply while console xtf handlers, including this crate's ported PixServer (SET_JSON_BODY_W_REPLY = 6), write replies through end-message slot 6, so VersionHandshake replies from PixServer would go to set_json_body_copy under the real dispatcher",
+   "XtfCreatePixClientQuiet": "console 0xa810: saves the trace sink (0x17440), calls the XtfCreatePixClient path, restores it (0x172b8); blocked on the same unported PixClient object as row 2 (see that row for the method and handler list and the xbtp reply slot 6/7 mismatch)",
    "#4": "console 0x10b40: extension id must be 9bd151a3-47d0-41b9-be65-f1137468c280 (E_UNEXPECTED), metadata iid must be e2b6c063 (E_INVALIDARG), then XtfCreatePixServer(e2b6c063) and QueryInterface on the returned metadata; the PixServer reference the console leaks here is leaked the same way",
    "XtfPixClearRunningProcessList": "console 0xa2a0: NULL address E_POINTER, SplitConsoleAddress(XBTP_PORT_TITLE), XtfOpenVMSession(PIX extension, 30 s open-retry on 0x8c110303), empty JSON body serialized into a request message, SendBeginMessage(op 3) and ReceiveEndMessage(30000), S_OK only when the XBTP status is 0 else E_FAIL; src/api.rs + src/client.rs (consoleaddresshelpers/api.cpp ports); tested end to end against the ported PixServer on an in-process loopback dispatcher (client_tests::clear_running_process_list_reaches_ported_pix_server)",
    "XtfPixEnableGameDvr": "console 0x9f30: NULL address E_POINTER, SplitConsoleAddress(XBTP_PORT_SYSTEM), XtfOpenVMSession, {\"EnableGameDvr\":<int>} sent as op 0x28 with a 30000 ms receive timeout, non-zero transport status -> 0x8c110100|status, E_PENDING -> 0x8c110410, then XtfOperationError ReturnCode of the reply is returned; client_tests::enable_game_dvr_sends_flag_and_returns_reply_code",
@@ -4888,15 +4888,17 @@
   "file": "crates/compat/xvmaudioservice/src/lib.rs",
   "table": "crates/compat/xvmaudioservice/exports.txt",
   "functions": {
-   "DllCanUnloadNow": "implemented",
+   "DllCanUnloadNow": "forwarded",
    "DllGetActivationFactory": "implemented",
-   "DllGetClassObject": "missing"
+   "DllGetClassObject": "forwarded"
   },
   "notes": {
-   "DllCanUnloadNow": "console 0x8680 -> WRL Module::Terminate 0x84b4: S_OK when the module object count is 0 (cached class factories released), S_FALSE otherwise; this port never creates module objects (DllGetClassObject is missing), so the count stays 0",
+   "DllCanUnloadNow": "console 0x8680 -> WRL Module::Terminate 0x84b4: runs the console module's own DllCanUnloadNow once DllGetClassObject has loaded it under console-sandbox (S_FALSE while its objects live, S_OK after release, checked on all 4 dumps); before any class object was requested no console object can exist and it returns S_OK without loading the console",
    "DllGetActivationFactory": "console 0x86d0: *out = NULL; empty HSTRING or one with an embedded NUL -> RoOriginateErrorW(E_INVALIDARG, \"activatibleClassId\"), E_INVALIDARG; the module's activation-factory table (0x1a170..0x1a170) is empty, so every other id -> RoOriginateError(CLASS_E_CLASSNOTAVAILABLE 0x80040111)",
-   "DllGetClassObject": "console 0x88b0 serves 4 WRL classes (148ec3bf-349c-4eac-b373-9fd57cb46d88 creator 0x6e40, e782ced1-3b5d-43aa-a45d-82852b57d84c 0x6f70, 7f34f6c9-bed0-456d-9772-0d5b524a9d69 0x70a0, b988be16-d129-46fc-8c5a-c3ceff592137 0x8a40) whose objects drive \\.\\VirtualAudioBus IOCTLs, the acpi_hal Logan device, \\Device\\xvcmgmt, WNF state and the XboxSystem job object through private interfaces; those classes are not ported yet, and a factory that cannot build them would be fake success"
+   "DllGetClassObject": "partial: console 0x88b0 runs from the sandboxed console XVMAudioService.dll (newest dump, or TOMBOX_XVMAUDIOSERVICE_CONSOLE / XVMAudioService_console.dll); classes 148ec3bf-349c-4eac-b373-9fd57cb46d88, 7f34f6c9-bed0-456d-9772-0d5b524a9d69 and b988be16-d129-46fc-8c5a-c3ceff592137 construct on every dump; e782ced1-3b5d-43aa-a45d-82852b57d84c opens \\?\u0007cpi_hal#logan#0#{f764922a-de30-40a5-a66e-c46cb191a1cd} and its constructor throws a WIL C++ exception (0x80070002) out of CreateInstance without the hypervisor ACPI Logan device, so that CLSID returns CLASS_E_CLASSNOTAVAILABLE before the console is touched (BLOCKERS.md)"
   },
-  "not_in_built_dll": []
+  "not_in_built_dll": [
+   "DllGetClassObject"
+  ]
  }
 }

@@ -1,8 +1,12 @@
+pub mod api;
+pub mod client;
 pub mod com;
 pub mod json;
 pub mod server;
 #[cfg(test)]
 mod server_tests;
+#[cfg(test)]
+mod client_tests;
 
 #[no_mangle]
 pub extern "system" fn XtfPixPCLogPerformanceResult() -> i32 { 0 }

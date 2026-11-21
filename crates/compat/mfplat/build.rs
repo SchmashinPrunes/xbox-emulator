@@ -11,9 +11,10 @@ const NATIVE: &[&str] = &[
     "MFUnblockThread",
     "MFJoinIoPort",
     "MFGetPrivateWorkqueues",
+    "MFGetPlatform",
 ];
 
-const MISSING: &[&str] = &["MFGetPlatform"];
+const MISSING: &[&str] = &[];
 
 const SURFACE_ALIAS: (&str, &str) = ("MFCreateDXGISurfaceBufferX", "MFCreateDXGISurfaceBuffer");
 

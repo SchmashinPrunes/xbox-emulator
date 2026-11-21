@@ -484,7 +484,7 @@ fn startup_and_console_only_exports_follow_console_semantics() {
     let unblock = export!(px("MFUnblockThread"), fn() -> i32);
     let pool = export!(px("LFGetGlobalPool"), fn() -> *mut c_void);
     let join = export!(px("MFJoinIoPort"), fn(H) -> i32);
-    assert!(unsafe { GetProcAddress(proxy().proxy as H, b"MFGetPlatform\0".as_ptr()) }.is_null(), "MFGetPlatform stays unexported (BLOCKERS.md)");
+    assert!(!unsafe { GetProcAddress(proxy().proxy as H, b"MFGetPlatform\0".as_ptr()) }.is_null(), "MFGetPlatform is exported");
     let mut v = 7u32;
     assert_eq!(unsafe { get_private(&mut v) }, MF_E_SHUTDOWN);
     assert_eq!(v, 7);

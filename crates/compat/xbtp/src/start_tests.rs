@@ -267,7 +267,7 @@ fn ipv6_loopback_literal_against_v4_mapped_listener() {
         let host = wide("::1");
         let mut s: *mut c_void = null_mut();
         let hr = XbtpOpenSessionEx2(host.as_ptr(), 47931, &o, &SERVICE_INFO_EXTENSION, &IID_XBTP_CLIENT_SESSION, &mut s);
-        eprintln!("PROBE6 {:08X}", hr as u32);
+        assert_eq!(hr, crate::conn::E_COULD_NOT_CONNECT);
         if !s.is_null() {
             com_release(s);
         }

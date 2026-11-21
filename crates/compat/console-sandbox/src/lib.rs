@@ -10,7 +10,9 @@ pub mod regnt;
 pub mod rpc;
 pub mod wnf;
 pub mod host;
+pub mod notify;
 pub mod registry;
+pub mod regw;
 pub mod system;
 pub mod wstr;
 
@@ -107,6 +109,11 @@ pub fn hooks() -> Vec<Hook> {
         hook!("RegGetValueW", REG, registry::reg_get_value_w),
         hook!("RegQueryInfoKeyW", REG, registry::reg_query_info_key_w),
         hook!("RegEnumValueW", REG, registry::reg_enum_value_w),
+        hook!("RegQueryValueExW", REG, regw::reg_query_value_ex_w),
+        hook!("RegEnumKeyExW", REG, regw::reg_enum_key_ex_w),
+        hook!("RegEnumKeyW", REG, regw::reg_enum_key_w),
+        hook!("RegDeleteValueW", REG, regw::reg_delete_value_w),
+        hook!("RegDeleteKeyW", REG, regw::reg_delete_key_w),
         hook!("CreateFileW", FILE, fs::create_file_w),
         hook!("GetFileAttributesW", FILE, fs::get_file_attributes_w),
         hook!("DeleteFileW", FILE, fs::delete_file_w),
@@ -122,6 +129,10 @@ pub fn hooks() -> Vec<Hook> {
         hook!("SetServiceStatus", SERVICE, host::set_service_status),
         hook!("OpenSCManagerW", SERVICE, host::open_sc_manager_w),
         hook!("OpenServiceW", SERVICE, host::open_service_w),
+        hook!("OpenSCManagerA", SERVICE, notify::open_sc_manager_a),
+        hook!("OpenServiceA", SERVICE, notify::open_service_a),
+        hook!("NotifyServiceStatusChangeA", SERVICE, notify::notify_service_status_change),
+        hook!("NotifyServiceStatusChangeW", SERVICE, notify::notify_service_status_change),
         hook!("CloseServiceHandle", SERVICE, host::close_service_handle),
         hook!("QueryServiceStatusEx", SERVICE, host::query_service_status_ex),
         hook!("QueryServiceConfigW", SERVICE, host::query_service_config_w),

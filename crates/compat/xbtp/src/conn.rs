@@ -1607,7 +1607,7 @@ pub(crate) mod tests {
 
     #[test]
     fn tcp_server_accept_connect_and_transfer() {
-        let _g = NET_LOCK.lock().unwrap();
+        let _g = NET_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         init();
         unsafe {
             let mut cnull: *mut XbtpChannel = null_mut();
@@ -1650,7 +1650,7 @@ pub(crate) mod tests {
 
     #[test]
     fn tcp_connect_refused_maps_to_could_not_connect() {
-        let _g = NET_LOCK.lock().unwrap();
+        let _g = NET_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         init();
         unsafe {
             let name = wide("127.0.0.1");

@@ -76,6 +76,7 @@ fn main() {
     let compat = here.parent().unwrap().to_path_buf();
     let hosts = here.join("data").join("console_apiset_hosts.txt");
     println!("cargo:rerun-if-changed={}", hosts.display());
+    println!("cargo:rerun-if-changed={}", here.join("../../../Cargo.toml").display());
     let mut libs: Vec<(PathBuf, String, bool)> = Vec::new();
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(&compat).map(|r| r.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect()).unwrap_or_default();
     dirs.sort();

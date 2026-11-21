@@ -1646,6 +1646,10 @@ pub fn wrap_device(real: *mut c_void) -> *mut c_void {
 
 static WRAPPED: std::sync::Mutex<Vec<(usize, usize)>> = std::sync::Mutex::new(Vec::new());
 
+pub(crate) fn is_wrapper(p: *mut c_void) -> bool {
+    WRAPPED.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|e| e.1 == p as usize)
+}
+
 pub(crate) fn wrapper_qi(real: *mut c_void, riid: *const Guid, ppv: *mut *mut c_void) -> Option<i32> {
     let g = WRAPPED.lock().unwrap_or_else(|e| e.into_inner());
     let w = g.iter().rev().find(|e| e.0 == real as usize)?.1;

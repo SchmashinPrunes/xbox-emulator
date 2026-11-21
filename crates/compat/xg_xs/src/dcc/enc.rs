@@ -307,6 +307,18 @@ pub(crate) fn color_faults(d: &Dcc) -> bool {
     color_mode(d) != 1 && d.r32(4) >> 2 == 0 && (0..4).any(|k| (d.r32(0x5c) >> k) & 1 != 0)
 }
 
+pub(crate) fn color_in(d: &mut Dcc, t: &mut Tmp) -> Result<(), i32> {
+    let cm = color_mode(d);
+    color(d)?;
+    if cm != 1 {
+        t.b[56..64].copy_from_slice(&8u64.to_le_bytes());
+        for p in 0..64 {
+            t.ever[p] = p >= 56 || (t.ever[p] && (16..48).contains(&p));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn color(d: &mut Dcc) -> Result<(), i32> {
     let r = color_mode(d);
     if r == 1 {
@@ -501,7 +513,7 @@ fn seg_widths(d: &mut Dcc, k: u32) -> Result<(), i32> {
     Ok(())
 }
 
-pub(crate) fn tid_with(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32> {
+fn tid_in(d: &mut Dcc, t: &mut Tmp) -> Result<(), i32> {
     let gm = [3u32; 4];
     let al = d.r32(0x12c0);
     let mut sm = [4u32; 4];
@@ -519,8 +531,7 @@ pub(crate) fn tid_with(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32>
             maps[k] = Some((gm[k], sm[k]));
         }
     }
-    let mut t = Tmp::with(fill);
-    lay_in(d, 2, 2, &maps, &mut t)?;
+    lay_in(d, 2, 2, &maps, t)?;
     for q in 0..8u32 {
         if !seg(d, q >> 1)? {
             continue;
@@ -547,7 +558,7 @@ pub(crate) fn tid_with(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32>
     for k in 0..4 {
         seg_widths(d, k)?;
     }
-    Ok(t.hit)
+    Ok(())
 }
 
 pub(crate) fn vrs(d: &mut Dcc) -> Result<(), i32> {
@@ -565,7 +576,7 @@ pub(crate) fn vrs_with(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32>
 }
 
 fn vrs_body(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32> {
-    let mut hit = false;
+    let mut t = Tmp::with(fill);
     let fl = variant_flag(d);
     d.w8(0x394, fl);
     let top = if fl != 0 { 3usize } else { 0 };
@@ -585,7 +596,7 @@ fn vrs_body(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32> {
             _ => (0, 4),
         };
         d.w32(0x12c0, val);
-        hit |= tid_with(d, fill)?;
+        tid_in(d, &mut t)?;
         let o = 0xb99 + v * 0x100;
         let b = d.b[2];
         d.m[o..o + 256].copy_from_slice(&b);
@@ -598,7 +609,7 @@ fn vrs_body(d: &mut Dcc, fill: Option<[u8; 64]>) -> Result<bool, i32> {
             d.m[0x10dc + 32 * v + e as usize] = a as u8;
         }
     }
-    Ok(hit)
+    Ok(t.hit)
 }
 
 pub(crate) fn choose(d: &mut Dcc) -> Result<(), i32> {
@@ -1206,7 +1217,7 @@ pub fn run_with(d: &mut Dcc, fill: Option<[u8; 64]>, conv: Option<[u8; 64]>) -> 
     channel(d)?;
     signfix(d)?;
     relay_in(d, 2, 2, 2, &mut t)?;
-    color(d)?;
+    color_in(d, &mut t)?;
     relay_in(d, 2, 2, 3, &mut t)?;
     delta(d)?;
     let h = vrs_with(d, conv)?;

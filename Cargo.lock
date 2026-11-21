@@ -219,6 +219,7 @@ dependencies = [
 name = "gcxaudioext"
 version = "0.1.0"
 dependencies = [
+ "xma",
  "xone-exports",
 ]
 
@@ -338,7 +339,17 @@ name = "mfplat"
 version = "0.1.0"
 dependencies = [
  "compat-common",
+ "console-image",
+ "console-sandbox",
  "windows",
+]
+
+[[package]]
+name = "minappmodelx"
+version = "0.1.0"
+dependencies = [
+ "compat-common",
+ "xone-exports",
 ]
 
 [[package]]
@@ -1022,6 +1033,14 @@ name = "xtfcommon"
 version = "0.1.0"
 
 [[package]]
+name = "xtfdebugmonitor"
+version = "0.1.0"
+dependencies = [
+ "xtfcommon",
+ "xtfmsg",
+]
+
+[[package]]
 name = "xtfdiaginfo"
 version = "0.1.0"
 dependencies = [
@@ -1066,6 +1085,9 @@ dependencies = [
 name = "xvmaudioservice"
 version = "0.1.0"
 dependencies = [
+ "compat-common",
+ "console-image",
+ "console-sandbox",
  "xone-exports",
 ]
 
