@@ -17,9 +17,8 @@ fn export_table_matches_exports_txt() {
     want.sort();
     let got = xone_exports::pe_exports(&std::fs::read(built("hix_xs.dll")).unwrap()).unwrap();
     assert_eq!(got, want);
-    for name in ["DebugLive", "WriteHangDump"] {
-        assert!(rows.iter().any(|e| e.name == name && e.status == "missing"));
-        assert!(!got.iter().any(|(_, n)| n == name));
-    }
+    assert!(!rows.iter().any(|e| e.status == "missing"));
+    assert!(got.iter().any(|(o, n)| *o == 4 && n == "DebugLive"));
+    assert!(got.iter().any(|(o, n)| *o == 8 && n == "WriteHangDump"));
     assert!(got.iter().any(|(o, n)| *o == 3 && n == "CollectHangSummary"));
 }

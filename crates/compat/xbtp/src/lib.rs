@@ -19,6 +19,8 @@ pub mod api;
 pub mod handshake;
 pub mod dispatcher;
 pub mod dispatcher_com;
+pub mod service_info;
+pub mod start;
 pub mod xbtp2_json;
 pub mod xbtp2_ext;
 #[cfg(feature = "core")]
@@ -30,3 +32,5 @@ pub use sys::*;
 mod export_table_tests;
 #[cfg(test)]
 mod dispatcher_tests;
+#[cfg(test)]
+mod start_tests;

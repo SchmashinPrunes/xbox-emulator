@@ -6,8 +6,8 @@
    "ElfFlushEventLog": "implemented",
    "ElfRegisterEventSourceW": "implemented",
    "ElfReportEventW": "implemented",
-   "LsaDisablePasswordLessCurrentUser": "missing",
-   "LsaEnablePasswordLessCurrentUser": "missing",
+   "LsaDisablePasswordLessCurrentUser": "implemented",
+   "LsaEnablePasswordLessCurrentUser": "implemented",
    "OpenTraceFromBufferStream": "forwarded",
    "OpenTraceFromFile": "forwarded",
    "OpenTraceFromRealTimeLogger": "forwarded",
@@ -21,8 +21,8 @@
    "ElfFlushEventLog": "PE forwarder to advapi32legacy.ElfFlushEventLog; console forwards to api-ms-win-eventlog-private-l1-1-0, which only advapi32legacy exports on console",
    "ElfRegisterEventSourceW": "PE forwarder to advapi32legacy.ElfRegisterEventSourceW; console forwards to api-ms-win-eventlog-private-l1-1-0, which only advapi32legacy exports on console",
    "ElfReportEventW": "PE forwarder to advapi32legacy.ElfReportEventW; console forwards to api-ms-win-eventlog-private-l1-1-0, which only advapi32legacy exports on console",
-   "LsaDisablePasswordLessCurrentUser": "console forwards to ext-ms-win-advapi32-lsa-l1-1-3 (advapi32legacy); no PC DLL exports it and calling the PC LSA opnum would change the signed-in user's sign-in options, so it is not reproduced",
-   "LsaEnablePasswordLessCurrentUser": "console forwards to ext-ms-win-advapi32-lsa-l1-1-3 (advapi32legacy); no PC DLL exports it and calling the PC LSA opnum would change the signed-in user's sign-in options, so it is not reproduced",
+   "LsaDisablePasswordLessCurrentUser": "PE forwarder to advapi32legacy.LsaDisablePasswordLessCurrentUser; console forwards to ext-ms-win-advapi32-lsa-l1-1-3, which only advapi32legacy (ordinal 87) exports on console",
+   "LsaEnablePasswordLessCurrentUser": "PE forwarder to advapi32legacy.LsaEnablePasswordLessCurrentUser; console forwards to ext-ms-win-advapi32-lsa-l1-1-3, which only advapi32legacy (ordinal 89) exports on console",
    "OpenTraceFromBufferStream": "PE forwarder to sechost.OpenTraceFromBufferStream; console forwards to api-ms-win-eventing-consumer-l1-1-2, which resolves to sechost on console and PC",
    "OpenTraceFromFile": "PE forwarder to sechost.OpenTraceFromFile; console forwards to api-ms-win-eventing-consumer-l1-1-2, which resolves to sechost on console and PC",
    "OpenTraceFromRealTimeLogger": "PE forwarder to sechost.OpenTraceFromRealTimeLogger; console forwards to api-ms-win-eventing-consumer-l1-1-2, which resolves to sechost on console and PC",
@@ -121,9 +121,9 @@
    "LsaCreateTrustedDomain": "forwarded",
    "LsaCreateTrustedDomainEx": "forwarded",
    "LsaDeleteTrustedDomain": "forwarded",
-   "LsaDisablePasswordLessCurrentUser": "missing",
+   "LsaDisablePasswordLessCurrentUser": "implemented",
    "LsaDisableUserArso": "forwarded",
-   "LsaEnablePasswordLessCurrentUser": "missing",
+   "LsaEnablePasswordLessCurrentUser": "implemented",
    "LsaEnableUserArso": "forwarded",
    "LsaEnumerateAccounts": "forwarded",
    "LsaEnumeratePrivileges": "forwarded",
@@ -330,9 +330,9 @@
    "LsaCreateTrustedDomain": "PE forwarder to advapi32_sys.LsaCreateTrustedDomain; console advapi32legacy is the advapi32 source built for the console; disassembly of both builds compared: same checks, constants and callees, differing only in delay-load and RPC stub plumbing",
    "LsaCreateTrustedDomainEx": "PE forwarder to advapi32_sys.LsaCreateTrustedDomainEx; console advapi32legacy is the advapi32 source built for the console; disassembly of both builds compared: same checks, constants and callees, differing only in delay-load and RPC stub plumbing",
    "LsaDeleteTrustedDomain": "PE forwarder to advapi32_sys.LsaDeleteTrustedDomain; console advapi32legacy is the advapi32 source built for the console; disassembly of both builds compared: same checks, constants and callees, differing only in delay-load and RPC stub plumbing",
-   "LsaDisablePasswordLessCurrentUser": "console body is lsarpc NdrClientCall3 opnum 0x7f (no arguments); no PC DLL exports it and calling the PC LSA opnum would change the signed-in user's sign-in options, so it is not reproduced",
+   "LsaDisablePasswordLessCurrentUser": "console XDefiant 0x2f70: NdrClientCall3(lsarpc proxy 0x3d978, opnum 0x7f, generic binding with NULL server -> RpcBindingCreateW ncalrpc LSARPC_ENDPOINT, authn level 6 WINNT from template 0x41b00); RPC exception -> I_RpcMapWin32Status(code) when negative, else 0xC0000001. Server (Fortnite lsasrv 0xbff80 -> 0xbfd8c) behind security callback 0x24dd0 with .data 0x15e4f0 entry {mask 8, flags 3}: opnum >= 0x81 or flag 4 -> 0x6d1, protseq bit clear -> 0x6a7, IsClientLocal != 1 or authn level 2-4 -> 5, flag 2: authn service 0x44 at level >= 5 passes, else CheckTokenMembershipEx(CTMF_INCLUDE_LPAC) on well-known slot 22 = S-1-5-11 (builder 0x4f820 entry 24: authority 0x15ed74 = 5, RID 11; FALSE -> GetLastError, not a member -> 5), then TokenIsAppContainer without flag 8 -> 5; the client gets the code as an RPC exception and returns I_RpcMapWin32Status of it (5 -> 0xC0000022). Console title token: gamehostservice 0x2c40 NtCreateUserProcess passes only JobList/ClientId/ImageName/MemoryReserve attributes (no token, no lowbox), so the title inherits the service primary token; 0x4c5c only adds the XBOX://LI security attribute -> not an AppContainer, member of Authenticated Users, gate passes (token user S-1-5-18 and the other groups are inferred, only S-1-5-11 membership and the AppContainer flag are proven). Body: ForceDisablePasswordlessNewDevices (HKLM\\SYSTEM\\CurrentControlSet\\Control\\Cryptography\\PwdlessPlat\\ImageCustomization, absent from every shipped console hive) unset -> HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\PasswordLess\\Device DevicePasswordLessBuildVersion = 0 (0x108924/0x108530); set -> ...\\PasswordLess\\UserConfig\\<token user> PasswordLess = 2 (0x1086fc); write error -> 0xC007xxxx, else STATUS_SUCCESS. Written to the emulated HKLM store (TOMBOX_GDK_ROOT or %LOCALAPPDATA%\\XboxEmulator, hklm\\<key>\\<value>.dword), read back by the console-mode title registry hook in compat-common; host LSA and registry never touched",
    "LsaDisableUserArso": "PE forwarder to advapi32_sys.LsaDisableUserArso; console advapi32legacy is the advapi32 source built for the console; disassembly of both builds compared: same checks, constants and callees, differing only in delay-load and RPC stub plumbing",
-   "LsaEnablePasswordLessCurrentUser": "console body is lsarpc NdrClientCall3 opnum 0x7e (no arguments); no PC DLL exports it and calling the PC LSA opnum would change the signed-in user's sign-in options, so it is not reproduced",
+   "LsaEnablePasswordLessCurrentUser": "console XDefiant 0x2f10: NdrClientCall3(lsarpc proxy 0x3d978, opnum 0x7e, generic binding with NULL server -> RpcBindingCreateW ncalrpc LSARPC_ENDPOINT, authn level 6 WINNT from template 0x41b00); RPC exception -> I_RpcMapWin32Status(code) when negative, else 0xC0000001. Server (Fortnite lsasrv 0xbff90 -> 0xbfd8c) behind security callback 0x24dd0 with .data 0x15e4f0 entry {mask 8, flags 3}: opnum >= 0x81 or flag 4 -> 0x6d1, protseq bit clear -> 0x6a7, IsClientLocal != 1 or authn level 2-4 -> 5, flag 2: authn service 0x44 at level >= 5 passes, else CheckTokenMembershipEx(CTMF_INCLUDE_LPAC) on well-known slot 22 = S-1-5-11 (builder 0x4f820 entry 24: authority 0x15ed74 = 5, RID 11; FALSE -> GetLastError, not a member -> 5), then TokenIsAppContainer without flag 8 -> 5; the client gets the code as an RPC exception and returns I_RpcMapWin32Status of it (5 -> 0xC0000022). Console title token: gamehostservice 0x2c40 NtCreateUserProcess passes only JobList/ClientId/ImageName/MemoryReserve attributes (no token, no lowbox), so the title inherits the service primary token; 0x4c5c only adds the XBOX://LI security attribute -> not an AppContainer, member of Authenticated Users, gate passes (token user S-1-5-18 and the other groups are inferred, only S-1-5-11 membership and the AppContainer flag are proven). Body: ForceDisablePasswordlessNewDevices (HKLM\\SYSTEM\\CurrentControlSet\\Control\\Cryptography\\PwdlessPlat\\ImageCustomization, absent from every shipped console hive) unset -> HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\PasswordLess\\Device DevicePasswordLessBuildVersion = 2 (0x108924/0x108530); set -> ...\\PasswordLess\\UserConfig\\<token user> PasswordLess = 1 (0x1086fc); write error -> 0xC007xxxx, else STATUS_SUCCESS. Written to the emulated HKLM store (TOMBOX_GDK_ROOT or %LOCALAPPDATA%\\XboxEmulator, hklm\\<key>\\<value>.dword), read back by the console-mode title registry hook in compat-common; host LSA and registry never touched",
    "LsaEnableUserArso": "PE forwarder to advapi32_sys.LsaEnableUserArso; console advapi32legacy is the advapi32 source built for the console; disassembly of both builds compared: same checks, constants and callees, differing only in delay-load and RPC stub plumbing",
    "LsaEnumerateAccounts": "PE forwarder to advapi32_sys.LsaEnumerateAccounts; console advapi32legacy is the advapi32 source built for the console; disassembly of both builds compared: same checks, constants and callees, differing only in delay-load and RPC stub plumbing",
    "LsaEnumeratePrivileges": "PE forwarder to advapi32_sys.LsaEnumeratePrivileges; console advapi32legacy is the advapi32 source built for the console; disassembly of both builds compared: same checks, constants and callees, differing only in delay-load and RPC stub plumbing",
@@ -860,16 +860,22 @@
   "functions": {
    "AddData": "implemented",
    "AddStreamingApiObject": "implemented",
+   "CollectHangSummary": "forwarded",
+   "DebugLive": "forwarded",
    "InitializeHix": "forwarded",
    "SaveDeveloperBlobInfo": "implemented",
-   "TerminateHix": "forwarded"
+   "TerminateHix": "forwarded",
+   "WriteHangDump": "forwarded"
   },
   "notes": {
    "AddData": "22621 build: ids from a global counter starting at 1; keyed calls memoised by the 8-byte key value (console FNV-1a unordered_map); the dump sink is only installed by WriteHangDump",
    "AddStreamingApiObject": "appends a 0x2dc-byte copy to the streaming API object vector, returns 0",
+   "CollectHangSummary": "console hix_xs.dll from the newest title dump (TOMBOX_HIX_XS_CONSOLE, hix_xs_console.dll beside this DLL) bound to the in-process XgsKmd10 emulation as for InitializeHix; XDefiant 0x72c0 / Trackmania 0x5690: copies the 0x60-byte hang context (or none) into the mailbox (+0x144c, length +0x1448), posts cmd 0xf, waits for the ack at data+0xa040, parses the stream at data+0x40a050 (0x29830-byte parse buffer) and writes context+0x50 to report+0x618; the emulated KMD answers cmd 0xf with a Scarlett stream (version 0x201001) with no GCVM/MMVM/DCN/ATC/GCEA/UTCL1 faults, which the console code reports through the InitializeHix log sink; E_FAIL without a console image; test tests_hang::console_collect_hang_summary_reports_no_faults",
+   "DebugLive": "console hix_xs.dll from the newest title dump (TOMBOX_HIX_XS_CONSOLE, hix_xs_console.dll beside this DLL) bound to the in-process XgsKmd10 emulation as for InitializeHix; (DWORD, const summary*, out*) -> HRESULT (Trackmania 0x55e0, XDefiant 0x7210, absent from the 19041 Fortnite build): logs \"Checking the possibility of live debugging\" and runs 0x4ec34, which posts mailbox cmd 0x1b; the emulated KMD serves only cmds 0xf (summary), 0x17 (disarm), 0x28/0x29 (halt/unhalt all shader waves) and answers every other command, 0x1b included, with status E_NOTIMPL (0x80004001) and no stream, because it holds no Xbox wave state, so the console code takes its no-live-debugging path and returns E_FAIL; E_FAIL without a console image; test tests_dump::console_debug_live_reports_no_live_debugging",
    "InitializeHix": "console hix_xs.dll from the newest title dump (TOMBOX_HIX_XS_CONSOLE, hix_xs_console.dll beside this DLL) with its CreateFileW/DeviceIoControl/CloseHandle/NtDirectGraphicsCall bound to the in-process XgsKmd10 emulation (region 0 data 0x490000 bytes, region 1 mailbox 0x1b58, map 0x7900c1b0, handshake 0x7900c190, arm 0x7900c1a3, doorbell 0x7900c19c acked synchronously as a GPU with no halted waves) and its d:/t: file APIs mapped under TOMBOX_SCRATCH_DIR or %LOCALAPPDATA%\\TomBox\\scratch\\<title>; console xmem preloaded with XMemSetAllocationHooks when no xmem.dll is loaded; E_FAIL without a console image; maps both regions, zeroes the blob count, arms the KMD",
    "SaveDeveloperBlobInfo": "E_FAIL until the XgsKmd10 mailbox (region 1) is mapped; once InitializeHix maps it through the in-process KMD, fills up to 64 (ptr,size) slots at +0x1858/+0x1a58, count at +0x1850, 1 when full",
-   "TerminateHix": "console hix_xs.dll from the newest title dump (TOMBOX_HIX_XS_CONSOLE, hix_xs_console.dll beside this DLL) with its CreateFileW/DeviceIoControl/CloseHandle/NtDirectGraphicsCall bound to the in-process XgsKmd10 emulation (region 0 data 0x490000 bytes, region 1 mailbox 0x1b58, map 0x7900c1b0, handshake 0x7900c190, arm 0x7900c1a3, doorbell 0x7900c19c acked synchronously as a GPU with no halted waves) and its d:/t: file APIs mapped under TOMBOX_SCRATCH_DIR or %LOCALAPPDATA%\\TomBox\\scratch\\<title>; console xmem preloaded with XMemSetAllocationHooks when no xmem.dll is loaded; E_FAIL without a console image; unhalt (cmd 0x29) then disarm (cmd 0x17) through the mailbox"
+   "TerminateHix": "console hix_xs.dll from the newest title dump (TOMBOX_HIX_XS_CONSOLE, hix_xs_console.dll beside this DLL) with its CreateFileW/DeviceIoControl/CloseHandle/NtDirectGraphicsCall bound to the in-process XgsKmd10 emulation (region 0 data 0x490000 bytes, region 1 mailbox 0x1b58, map 0x7900c1b0, handshake 0x7900c190, arm 0x7900c1a3, doorbell 0x7900c19c acked synchronously as a GPU with no halted waves) and its d:/t: file APIs mapped under TOMBOX_SCRATCH_DIR or %LOCALAPPDATA%\\TomBox\\scratch\\<title>; console xmem preloaded with XMemSetAllocationHooks when no xmem.dll is loaded; E_FAIL without a console image; unhalt (cmd 0x29) then disarm (cmd 0x17) through the mailbox",
+   "WriteHangDump": "console hix_xs.dll from the newest title dump (TOMBOX_HIX_XS_CONSOLE, hix_xs_console.dll beside this DLL) bound to the in-process XgsKmd10 emulation as for InitializeHix, d:/t: mapped under TOMBOX_SCRATCH_DIR or %LOCALAPPDATA%\\TomBox\\scratch\\<title>; (DWORD flags, PWSTR out, DWORD cch, const summary*) -> HRESULT (Trackmania 0x5930, XDefiant 0x7560, Fortnite 19041 ordinal 4 0x5060): creates <d:|t:>\\HIX\\gpuhang-Y-M-D-h-m-s.hix (flags bit 2 picks d:) with magic \"Hix\" version 0x220200 and the TicI block, then the capture 0x7439c: halt all waves (cmd 0x28, served), SQ dump (cmd 0x14), which the emulated KMD answers with E_NOTIMPL because it holds no Xbox wave, IH-ring or VM state, so the capture stops, waves are unhalted (cmd 0x29) and the SysI block is written; on that failed capture the console code (0x5d0a) skips the d:\\gpuhang-latest.hix copy, the high-level summary and the path copy-out and still returns S_OK, so the .hix holds only the header, TicI, Basc and SysI blocks with no GPU state and the out buffer is left untouched; E_FAIL only when CreateFileW fails or without a console image; a full dump needs the emulator to model wave, IH-ring and VM state (docs/BLOCKERS.md); test tests_dump::console_write_hang_dump_takes_its_failed_capture_path"
   }
  },
  "kernel32.dll": {
@@ -1517,27 +1523,27 @@
  "KernelBase.dll": {
   "file": "crates/compat/kernelbase/src/lib.rs",
   "functions": {
-   "AddPackageToFamilyXref": "missing",
+   "AddPackageToFamilyXref": "implemented",
    "GetPackageInstallTime": "implemented",
-   "RemovePackageFromFamilyXref": "missing"
+   "RemovePackageFromFamilyXref": "implemented"
   },
   "notes": {
-   "AddPackageToFamilyXref": "console KernelBase deployment internal: creates ACL-protected HKEY_USERS\\<sid>\\...\\AppModel\\Repository\\Families\\<family>\\<fullname> keys with an InstallTime qword and a dword under a built security descriptor; doing it for real would write restricted keys into the user's real hive and there is no emulator package repository to back it; no title imports it",
-   "GetPackageInstallTime": "console KernelBase 0xe9b70 (19041): NULL arg 0x57, family from full name, HKCU (RtlOpenCurrentUser KEY_READ) ...\\AppModel\\Repository\\Families\\<family>\\<fullname> into a 0x128-char buffer (overflow 0x57), open error 2 becomes 0x490, InstallTime value query error returned as is, type other than REG_QWORD 0x3d55, else FILETIME and 0",
-   "RemovePackageFromFamilyXref": "console KernelBase deployment internal paired with AddPackageToFamilyXref: deletes the ACL-protected Families\\<family>\\<fullname> key under HKEY_USERS\\<sid>; same reason, needs a package repository the emulator does not have and would modify the real user hive; no title imports it"
+   "AddPackageToFamilyXref": "console KernelBase 0x83d50 (Fortnite dump, onecore\\base\\appmodel\\runtime\\src\\lookup.cpp): x64 args (PSID user, PCWSTR packageFullName, PCWSTR packageSid, DWORD flags, ULONGLONG installTime), HRESULT; NULL full name 0x80070057; family via PackageIdFromFullName (0xf0-byte id) + PackageFamilyNameFromId (0x41 chars), errors HRESULT_FROM_WIN32; NULL user -> effective-token (-6) TokenUser; SID string by RtlConvertSidToUnicodeString (NTSTATUS returned as is); HKEY_USERS\\<sid> opened KEY_ALL_ACCESS (read-only probe of the PC hive, open error as HRESULT, nothing written); family DACL SDDL D:AR(A;OICI;KR;;;S-1-15-2-1)(A;OICI;KR;;;%s) where %s is S-1-15-2-1 when flags == 2, else packageSid or, when NULL, DeriveAppContainerSidFromAppContainerName(family), with char 7 rewritten to 3 (capability SID), checked by ConvertStringSecurityDescriptorToSecurityDescriptorW + GetSecurityDescriptorDacl (GetLastError HRESULT); the Families\\<family>\\<fullname> Flags REG_DWORD and InstallTime REG_QWORD (and the DACL set only when the family key is new) go to the in-process package repository keyed by user SID, which GetPackageInstallTime (ordinal 656) reads; the PC HKEY_USERS hive is never written",
+   "GetPackageInstallTime": "console KernelBase 0xe9b70 (19041): NULL arg 0x57, family from full name, HKCU (RtlOpenCurrentUser KEY_READ) ...\\AppModel\\Repository\\Families\\<family>\\<fullname> into a 0x128-char buffer (overflow 0x57), open error 2 becomes 0x490, InstallTime value query error returned as is, type other than REG_QWORD 0x3d55, else FILETIME and 0; records added or removed by ordinals 29/1428 for the effective-token user are served from the in-process package repository after the same name and path checks, everything else from the PC HKCU (read-only)",
+   "RemovePackageFromFamilyXref": "console KernelBase 0x84950: x64 args (PSID user, PCWSTR packageFullName), HRESULT; NULL full name 0x80070057, name parse, user SID and HKEY_USERS\\<sid> open errors as in AddPackageToFamilyXref; otherwise S_OK always (console 0x84bc8 delete errors and a missing family/full key (error 2) are only logged): the Families\\<family>\\<fullname> record is deleted from the in-process package repository and the family node dropped once RegEnumKeyExW would report ERROR_NO_MORE_ITEMS; a deleted record stays deleted for GetPackageInstallTime (0x490) even when the PC hive holds the same name; the PC hive is never written"
   }
  },
  "KernelTraceControl.dll": {
   "file": "crates/compat/kerneltracecontrol/src/lib.rs",
   "functions": {
-   "CreateMergedTraceFile": "missing",
+   "CreateMergedTraceFile": "forwarded",
    "DllCanUnloadNow": "implemented",
    "StartHeapTrace": "implemented",
    "StartKernelTrace": "implemented",
    "UpdateHeapTrace": "implemented"
   },
   "notes": {
-   "CreateMergedTraceFile": "console version is a COM relogger with ~12 injected rundown sources (image id, dbgid, volume map, file version); not ported",
+   "CreateMergedTraceFile": "console KernelTraceControl.dll from the newest title dump (TOMBOX_KERNELTRACECONTROL_CONSOLE, kerneltracecontrol_console.dll beside this DLL, or a title EmbeddedXvd System32) loaded in-process; every import of the console image is an API set or ntdll export the PC resolves, so its own merge engine (Fortnite 0x1e40 -> 0x44f0, in-image reader/writer and rundown filters chosen by flag bits) runs unchanged: (PCWSTR merged, PCWSTR *inputs, ULONG count, ULONG flags) -> Win32 (HRESULT mapping at 0x1e9a: success 0, or 0x7a with a nonzero out count; facility 7 low word; 0x8004e0xx 0x51a/0x80280012; else 0x507); measured on the PC: input events kept per provider, bit 1/2/3/6 add rundown events, missing input 2, NULL merged name 0x507, bit 30 with low 12 bits clear 0x57; without a console image returns 0x507; tests tests_merge::*",
    "DllCanUnloadNow": "module object count; S_OK when no objects are live",
    "StartHeapTrace": "console extension block (group mask, pid list, stack hook ids) on the Heap provider GUID, then StartTraceW",
    "StartKernelTrace": "console extension block with classic-flag to group-mask map and 32-class hook ids, StartTraceW, EnableTraceEx for the system provider",
@@ -1850,10 +1856,14 @@
  "netprofmsvc_c.dll": {
   "file": "crates/compat/netprofmsvc_c/src/lib.rs",
   "functions": {
-   "SvchostPushServiceGlobalsEx": "implemented"
+   "ServiceMain": "missing",
+   "SvchostPushServiceGlobalsEx": "implemented",
+   "DllMain": "implemented"
   },
   "notes": {
-   "SvchostPushServiceGlobalsEx": "console 0x6fc0: stores the svchost global data pointer in the module global (console 0x6e760) that the service main reads; no other effect"
+   "ServiceMain": "console 0x6fd0 (19041) / 0x8110 (22000): the Network Profile service body (224 imports): an RPC server (RpcServerUseProtseqW, RpcServerRegisterIf3), WNF publish and subscribe, WINHTTP connectivity probes, IPHLPAPI/NSI/WS2_32 network view, COM/WinRT class registration and NetGetJoinInformation; none of those peers is emulated in-process, see docs/BLOCKERS.md; left unexported so svchost-style callers get no fake service",
+   "SvchostPushServiceGlobalsEx": "console 0x6fc0: stores the svchost global data pointer in the module global (console 0x6e760) that the service main reads; no other effect",
+   "DllMain": "console 0x5a60 (19041; ported from this build; 22000 0x6900 differs only in its 0x98-byte FailureInfo with shifted field offsets and in clearing the provider callback field 0x77028 before destroying the object when registration fails):reason 1 runs 0x4823c: 0x168-byte TraceLogging aggregate object (0x4763c, threadpool timer with callback 0x47540, not armed) with flush period 0x47410 (hash of provider GUID and object>>4, 600000..1199999 ms), provider Microsoft.Windows.NetworkProfileService {ed795972-60e8-4815-8634-cfaa21a89de7} registered through EventRegister + EventSetInformation(traits, telemetry group 4f50731a) with the aggregate enable callback 0x481c0, object linked into the aggregate list (0x6e8b0) and, for the first one, Microsoft.Windows.TlgAggregateInternal {703fcc13-b66f-5868-ddd9-e2db7f381ffb} registered with callback 0x48150; then the wil result-logging slot (0x6e608) gets the 0x5910 callback, which writes the wil Failure event (level 2, channel 11, 17 fields) when the provider level is above 2, fail fast 0xC0000409/7 if the slot already holds another callback; reason 0 clears the slot and runs 0x48350 (unlink, flush, unregister both providers, timer stopped, object freed); other reasons return TRUE; aggregate entries are only produced by the service body's aggregated events (ServiceMain, not ported), so flushes find none and the TlgAggregateSummary event is never due"
   }
  },
  "newbe.dll": {
@@ -1902,9 +1912,9 @@
   },
   "notes": {
    "RtlWnfCompareChangeStamp": "console ntdll 0xde280 (19041) / 0xeaad0 (22000): unsigned 32-bit compare of two WNF change stamps, 0 equal, -1 below, 1 above; PC ntdll does not export it",
-   "RtlpExecuteUmsThread": "19041-only UMS scheduler entry label inside the NtUmsThreadYield assembly (reads the UMS context at TEB gs:[0x14a0], swaps GS base with wrgsbase); needs kernel user-mode scheduling, which Windows 11 removed and console 22000+ removed too (its UMS exports return STATUS_NOT_SUPPORTED and these labels are gone); no title imports it",
-   "RtlpUmsExecuteYieldThreadEnd": "19041-only UMS yield epilogue label (restores the UMS thread context and fails fast with int 0x29 code 0xd on a bad stack); same kernel UMS dependency as RtlpExecuteUmsThread; no title imports it",
-   "RtlpUmsThreadYield": "19041-only UMS yield label (saves the nonvolatile XMM state into the UMS context and enters the kernel UMS switch); same kernel UMS dependency as RtlpExecuteUmsThread; no title imports it"
+   "RtlpExecuteUmsThread": "19041-only label 0xa1d11 inside the assembly routine 0xa1d10..0xa20ac (.pdata), reached only by call from RtlExecuteUmsThread 0xf68bf with the target UMS context in rcx; reads the current UMS context at TEB+0x14a0, locks the target (+0x4f8), swaps GS to its TEB (+0x4e0) with wrgsbase and resumes it by jmp or iretq; needs the kernel UMS park-and-notify contract (blocked workers queued on the completion list, worker syscalls on the worker kernel thread), which the Windows 11 host lacks (CreateUmsCompletionList -> ERROR_NOT_SUPPORTED) and console 22000+ removed; no title imports any UMS API",
+   "RtlpUmsExecuteYieldThreadEnd": "19041-only fall-through label 0xa2036 in the same routine, no caller: tail of the yield path that restores the primary context (+0x500 previous context) and fails fast with int 0x29 code 0xd on a stack outside the TEB limits; same kernel UMS dependency as RtlpExecuteUmsThread",
+   "RtlpUmsThreadYield": "19041-only label 0xa1f43 in the same routine, reached only by call from RtlUmsThreadYield 0xf6b27: saves nonvolatile GPR/XMM6-15/MXCSR/x87 CW into the UMS context and switches GS back to the primary TEB; same kernel UMS dependency as RtlpExecuteUmsThread"
   }
  },
  "ole32.dll": {
@@ -2456,7 +2466,7 @@
   "functions": {
    "WldpQueryPolicySettingEnabledInternal": "implemented",
    "WldpCheckSecurityWatermarkState": "missing",
-   "WldpSendSmartAppControlBlockToast": "missing",
+   "WldpSendSmartAppControlBlockToast": "implemented",
    "WldpTraceLoggingWDACBlockDialogShown": "implemented",
    "WldpChangeVulnerableDriverBlocklistState": "implemented",
    "WldpCheckRetailConfiguration": "implemented",
@@ -2470,14 +2480,14 @@
   },
   "notes": {
    "WldpQueryPolicySettingEnabledInternal": "console body: NULL out -> 0xD000000D; *out = 0; index 0-5 and 1000 select a setting name from the console .rdata table (VerifiedAndReputableUI, DisableMshtmlUmci, ShellSmartscreenSuppressed, BrowserSmartscreenSuppressed, WcosOOBELogCollection, LegacyWhqlFlighting; 1000 VerifiedAndReputablePerfMode) and tail-call WldpQueryPolicySettingEnabled2, here the PC wldp export of that name loaded from System32 by full path; other indexes 0xD000000D (negative ids read before the console table, rejected here)",
-   "WldpCheckSecurityWatermarkState": "Fortnite console RVA 0x14ab0. The emulator side it needs exists (security store: emulated %SystemDrive%\\DPP watermark files, manufacturing-mode flag, Non-Production Errors.txt path; DMCfgUtils.dll SyncGetDeviceUniqueID used for the hashes at 0x1443c is not shipped in the console image, so the console path is LoadLibraryExW failure -> 1 with all-zero hashes). Still unported, so not exported: the HSTI verification tree (0x15b1c -> 0x16a7c KdDebuggerEnabled override, 0x16b60 NtQuerySystemInformation 0xA6, 0x15bd0 result-blob parser), the Secure Boot tree (0x12714: GetVersionExW, 0x11ed4, NtQuerySystemInformation 0x91 and 0x8F, three 0x123c0 policy-table checks over .data 0x25020, 0x1586c), FVEAPI FveGetSecureBootBindingState/FveQuery (0x14130), the ZwFilterBootOption test-boot-option scan (0x14258, tables 0x1f450/0x1f160), and the Non-Production Errors.txt writer (0x146b8/0x1479c/0x148c8). The console HSTI, Secure Boot and FVE state those trees read is not yet modelled in the store.",
-   "WldpSendSmartAppControlBlockToast": "Trackmania console RVA 0x1c010. A wil feature-staging check (feature 0x259f533, state at .data 0x41230, 0x1c0bc) picks one of two toasthelper.cpp builders, 0x1b80c or 0x1b9f4. Each loads a fixed toast XML template (0x31a50 / 0x31d10) into Windows.Data.Xml.Dom.XmlDocument, fills text and action nodes by XPath with wldp.dll.mui strings (ids 2000/3000/4000 or IDS_TOASTTITLE_BLOCK/IDS_TOASTBODY_BLOCK) formatted by FormatMessageW over the two arguments (0x1ae3c, 0x1b1a0, 0x1a018), then shows it with a ToastNotifier for Windows.Defender.SecurityCenter (0x1ac64). That ~700-line XML/resource/format tree, the feature-staging state and the en-US mui string table are not ported yet. The emulator log line with the console text and identical HRESULTs cannot be produced, and a log line returning S_OK would be fake success.",
+   "WldpCheckSecurityWatermarkState": "Fortnite console RVA 0x14ab0, walked end to end on 2026-11-21. Deterministic parts: the DMCfgUtils.dll hash path 0x1443c returns 1 with all-zero 0x20-byte hashes, and FVEAPI (0x14130, delay-load 0x28068/0x28070) cannot load. Neither DLL is in any shipped console image (Fortnite, XDefiant, Trackmania, Terraria). The watermark files are %SystemDrive%\\DPP\\WatermarkHSTITestComplete.bin and WatermarkSBTestComplete.bin (0x14594 read, 0x14930 write, 0x14364 delete). The Non-Production Errors.txt writer is 0x1479c/0x146b8 (0x252-byte header 0x1f170). The result is *out = 0 only when ManufacturingMode is off, no banned BCD element was found, Secure Boot passed (edi) and HSTI verified (r15b). Otherwise *out = 1, and on 0 Non-Production Errors.txt is deleted. That decision needs runtime answers that no image file holds, and none can be sourced for a title process: (1) ZwFilterBootOption(1, 0x10200003, elements 0x260000a0/0x16000010/0x16000049/0x260000f2) and (1, 0x10200002, 0x16000010/0x16000049), where a hit is status 0, 0x10000000 or 0x80430006; (2) GetOsManufacturingMode; (3) HSTI: the KdDebuggerEnabled override value (0x16abc RegGetValueW) and the NtQuerySystemInformation 0xA6 result blob parsed by 0x15bd0; (4) Secure Boot 0x12714: NtQuerySystemInformation 0x91 and 0x8F, NtQuerySystemEnvironmentValueEx UEFI variables behind AdjustTokenPrivileges (0x12594/0x12260), the three 0x123c0 checks over .data 0x25020, and the registry reads 0x157d8/0x1586c. Choosing values that make the checks pass would fake the retail result, so the export stays missing until the emulated console state for (1)-(4) has a source",
+   "WldpSendSmartAppControlBlockToast": "Trackmania console RVA 0x1c010: the wil feature-staging check (feature 0x259f533, .data 0x41230, 0x1c0bc) picks toasthelper.cpp builder 0x1b80c or 0x1b9f4. Both builders start the same way. They take a WindowsCreateStringReference of Windows.Data.Xml.Dom.XmlDocument (0x32610) and call RoActivateInstance (0x19d68). On failure they report it through wil (0x2246c, lines 0x195 and 0x1c5) and return that HRESULT, before any template, mui string or ToastNotifier is touched. On the console that activation fails. Every shipped console SOFTWARE hive has WindowsRuntime\\ActivatableClassId but no Windows.Data.Xml.Dom class, and System32 has no msxml6.dll. So combase's lookup gives REGDB_E_CLASSNOTREG 0x80040154. A thread with no apartment, and no implicit MTA in the process, gets CO_E_NOTINITIALIZED 0x800401F0 first; that state is probed with CoGetApartmentType, which matched RoActivateInstance in every state on the PC. The emulator returns exactly that and never activates the PC XmlDocument or notifier, so no host toast appears.",
    "WldpTraceLoggingWDACBlockDialogShown": "console RVA 0x7570 (Trackmania 10.0.22621.1852): args (PCWSTR FileName, DWORD hResult, GUID* DialogGuid, PCWSTR UserActionsTaken), no return value; FileName and the QueryFullProcessImageNameW image of the current process go through the console 0x739c rewrite (case-insensitive \"\\Users\\<name>\" prefix -> \"%USERPROFILE%\", ntdll RtlFindUnicodeSubstring), a failed rewrite drops the event, a failed image query uses L\"\"; written only when provider LevelPlus1 > 5 and keyword 0x400000000000 matches (port of the tlg enable callback 0x2a40 and keyword test 0x26a2c) on the provider at console .data 0x40238 (not 0x40270, which is the State provider used by ordinal 30): Microsoft.Windows.Security.CodeIntegrity.Activity {28dcc28b-3e31-527b-efd6-b4cc4d73d157}, registered with EventRegister + EventSetInformation(EventProviderSetTraits) like console 0x24980; EventWriteTransfer channel 11, level 5, opcode 0, keyword 0x400000000000 with the provider and event metadata blobs extracted byte-for-byte from the console image (data\\*.bin, re-checked against the dump by the test); fields PartA_PrivTags u64 0x2000000, FileName, CurrentProcess, hResult, DialogGuid, UserActionsTaken (NULL strings -> L\"\")",
    "WldpChangeVulnerableDriverBlocklistState": "console RVA 0x19360: calls WldpIsVulnerableDriverBlocklistEligibleToDisable (ordinal 32); not eligible -> 0x80070032, nothing written; eligible -> stores the DWORD arg as the emulated console value HKLM\\System\\CurrentControlSet\\Control\\CI\\Config VulnerableDriverBlocklistEnable (console RegSetKeyValueW REG_DWORD) in the emulator security store (%LOCALAPPDATA%\\XboxEmulator\\wldp\\state.txt, TOMBOX_GDK_ROOT override), S_OK, store write error -> HRESULT_FROM_WIN32; then the console VulnerableDriverBlocklistStateChanged TraceLogging event (State, ElligibleToDisable, Succeeded, PartA_PrivTags 0x1000000; level 5, keyword 0x800000000000) on Microsoft.Windows.Security.CodeIntegrity.State {a3064fc9-4d22-54c9-0003-1f90594554d3}, metadata extracted from the console image; host registry never touched",
    "WldpCheckRetailConfiguration": "console body: *arg2 = 1, *arg4 = 0, *arg3 = 0, return S_OK; arg1 unused",
    "WldpDisableDeveloperMode": "console RVA 0x25b10: gate = console 0x26818 (WldpQueryWindowsLockdownMode on the emulated CI policy options: & 0x24000000 -> 2 else bit 31; or state separation) from the emulator security store, retail options 0x24000000 -> gate on; gate off -> S_OK no-op; gate on -> deletes the emulated HKLM\\SYSTEM\\CurrentControlSet\\Control\\CI\\Developer\\DeveloperUnlock key; as on the console (RegDeleteKeyExW LSTATUS is positive) a missing key or write error still returns S_OK; host registry never touched",
    "WldpEnableDeveloperMode": "console RVA 0x25bf0: same CI gate as ordinal 23 (gate off -> S_OK no-op); converts the console SDDL (O:BAG:BAD:(A;CIID;KA;;;SY)(A;CIID;KA;;;BA)(A;CIID;KR;;;WD)(A;CIID;KR;;;RC)(A;;KR;;;AC)(A;;KR;;;S-1-15-3-1024-...)) with ConvertStringSecurityDescriptorToSecurityDescriptorW (failure -> HRESULT_FROM_WIN32(GetLastError())), then creates the emulated DeveloperUnlock key carrying that SDDL in the emulator security store (an existing key is opened unchanged, like RegCreateKeyExW), S_OK, store write error -> HRESULT_FROM_WIN32; host registry never touched",
-   "WldpIsProductionConfigurationInProc": "Trackmania console RVA 0x14f10. Its first helper, 0x7c08, decodes an obfuscated in-image table (0x343a2, multi-round hash on a 0x1290-byte frame) that selects which checks apply. The body then reads %SystemRoot%\\System32\\CodeIntegrity\\Data\\WatermarkHSTITestComplete.bin and WatermarkSecurityTestComplete.bin, hashes the HSTI and Security results (0x13f70, 0x14210), compares and rewrites them (0x147c8), can raise a WinSta0\\Default desktop warning, and writes a State-provider TraceLogging event (metadata 0x35e9b, provider .data 0x40270). The helper tree is about 12,000 disassembly lines and is not ported. The store paths and the tlg provider infrastructure are ready for it, but a partial port would fake the retail result.",
+   "WldpIsProductionConfigurationInProc": "Trackmania console RVA 0x14f10. The first helper, 0x7c08, writes a flag word and an HRESULT. If the flags are 0, the export takes the fast path 0x15299: *out = ((flags & mask) == 0), so production = 1. It then writes the State-provider event (metadata 0x35e9b, provider .data 0x40270, keyword 0x800000000000) and returns 0x7c08's HRESULT. 0x7c08 is not a static table decode. It is an 11,592-line obfuscated routine (0x1290-byte frame, lock cmpxchg on .data 0x411a8, about 70 CFG-dispatched indirect calls through 0x2f230). Its output depends on runtime queries: NtQuerySystemInformation resolved with GetProcAddress at 0xab46 and 0x127ec, GetProcessMitigationPolicy(GetCurrentProcess, 0xb) at 0x84cf, GetModuleFileNameW of the wldp image at 0xc66a, and GetModuleHandleExW/FreeLibrary module probes. Its output cannot be computed offline, so the 0x343a2 data cannot be committed as a decoded table. Porting it means porting the whole routine and modelling those queries as the console answers them for a title, which is unknown (the same class of state as row 8). The slow path, which reads CodeIntegrity\\Data Watermark*.bin, hashes HSTI and Security (0x13f70/0x14210), rewrites them (0x147c8) and shows the WinSta0\\Default warning, is gated on the same flags",
    "WldpIsVulnerableDriverBlocklistDisabled": "console RVA 0x19400: RegGetValueW(HKLM, System\\CurrentControlSet\\Control\\CI\\Config, VulnerableDriverBlocklistEnable, RRF_RT_REG_DWORD) read against the emulated console value in the emulator security store (shared with ordinal 19); present -> *out = (value != 1), S_OK; absent (retail default: the console image carries no such value) -> *out = 0, 0x80070002",
    "WldpIsVulnerableDriverBlocklistEligibleToDisable": "console body: NtQuerySystemInformation(0xA5, 16 bytes) flag 2 -> not eligible; otherwise eligible when the CI policy query (class 0xA4, 32 bytes: 0x24000000 -> 2, else bit 31) fails or reports 0; read-only, S_OK",
    "WldpSetDynamicCodeTrust2": "console body: NtSetSystemInformation(0xC7, {file handle, 0, 0}, 0x18), failure status | 0x10000000, else S_OK; byte-identical to the PC WldpSetDynamicCodeTrust body",
@@ -2629,10 +2639,10 @@
    "??1NpConnection@@UEAA@XZ": "implemented",
    "??1TcpConnection@@UEAA@XZ": "implemented",
    "??1XbtpClientAdapter@@UEAA@XZ": "implemented",
-   "??1XbtpConnectionDispatcher@@QEAA@XZ": "missing",
+   "??1XbtpConnectionDispatcher@@QEAA@XZ": "implemented",
    "??1XbtpExtensionRegistry@@QEAA@XZ": "implemented",
    "?AddExtension@XbtpExtensionRegistry@@QEAAJV?$shared_ptr@UExtensionDefinition@@@std@@@Z": "implemented",
-   "?AddPipeEndpoint@XbtpConnectionDispatcher@@QEAAJPEBG@Z": "missing",
+   "?AddPipeEndpoint@XbtpConnectionDispatcher@@QEAAJPEBG@Z": "implemented",
    "?BeginSession@XbtpClientAdapter@@QEAAJAEBU_GUID@@@Z": "implemented",
    "?BeginSession@XbtpClientAdapter@@QEAAJAEBU_GUID@@K@Z": "implemented",
    "?Connect@XbtpClientAdapter@@QEAAJK@Z": "implemented",
@@ -2649,7 +2659,7 @@
    "?DeserializeFixedCreateSessionResponse@@YAJKPEADPEAUXBTP_CREATE_SESSION_RESPONSE_MESSAGE@@@Z": "implemented",
    "?DeserializeFixedExtensionMessage@@YAJAEBUXBTP_MESSAGE_HEADER@@KPEADAEAUXBTP_BEGIN_MESSAGE@@@Z": "implemented",
    "?Initialize@XbtpClientAdapter@@QEAAJV?$shared_ptr@VXbtpConnection@@@std@@@Z": "implemented",
-   "?Initialize@XbtpConnectionDispatcher@@QEAAJV?$shared_ptr@VXbtpExtensionRegistry@@@std@@V?$shared_ptr@VXbtpConnection@@@3@1@Z": "missing",
+   "?Initialize@XbtpConnectionDispatcher@@QEAAJV?$shared_ptr@VXbtpExtensionRegistry@@@std@@V?$shared_ptr@VXbtpConnection@@@3@1@Z": "implemented",
    "?Initialize@XbtpExtensionRegistry@@QEAAJXZ": "implemented",
    "?Initialize@XbtpSession@@QEAAJAEBU_GUID@@V?$shared_ptr@VXbtpClientAdapter@@@std@@V?$shared_ptr@VXbtpChannel@@@4@@Z": "implemented",
    "?InitializeClient@NpConnection@@SAJPEBGPEAPEAV1@@Z": "implemented",
@@ -2681,7 +2691,7 @@
    "?ReceiveOnewayMessage@XbtpSession@@QEAAJKPEAV?$shared_ptr@UXBTP_MESSAGE_BODY@@@std@@@Z": "implemented",
    "?ReceiveOnewayMessage@XbtpSession@@QEAAJPEAV?$shared_ptr@UXBTP_MESSAGE_BODY@@@std@@@Z": "implemented",
    "?RegisterExtension@XbtpExtensionRegistry@@QEAAJAEBU_GUID@@PEBG@Z": "implemented",
-   "?Run@XbtpConnectionDispatcher@@QEAAJXZ": "missing",
+   "?Run@XbtpConnectionDispatcher@@QEAAJXZ": "implemented",
    "?SendBeginMessage@XbtpSession@@QEAAJKAEBUXBTP_MESSAGE_BODY@@PEAH@Z": "implemented",
    "?SendEndMessage@XbtpSession@@QEAAJHW4XBTP_STATUS_CODE@@AEBUXBTP_MESSAGE_BODY@@@Z": "implemented",
    "?SendMoreMessage@XbtpSession@@QEAAJHAEBUXBTP_MESSAGE_BODY@@@Z": "implemented",
@@ -2694,8 +2704,8 @@
    "?SerializeCreateSessionResponse@@YAJFAEBU_GUID@@W4XBTP_STATUS_CODE@@PEAUUTF8Text@@KPEAKPEAD@Z": "implemented",
    "?SerializeDisconnect@@YAJFW4XBTP_STATUS_CODE@@KPEAKPEAD@Z": "implemented",
    "?SerializeFixedExtensionMessage@@YAJFFAEBU_GUID@@HKAEBUXBTP_MESSAGE_BODY@@KPEAKPEAD@Z": "implemented",
-   "?Shutdown@XbtpConnectionDispatcher@@QEAAXXZ": "missing",
-   "?XbtpCompleteSessionSetupInternal@@YAJAEBU_GUID@@_NIV?$shared_ptr@VXbtpConnection@@@std@@PEAPEAVXbtpSession@@@Z": "missing",
+   "?Shutdown@XbtpConnectionDispatcher@@QEAAXXZ": "implemented",
+   "?XbtpCompleteSessionSetupInternal@@YAJAEBU_GUID@@_NIV?$shared_ptr@VXbtpConnection@@@std@@PEAPEAVXbtpSession@@@Z": "implemented",
    "XbtpGetCurrentTlsEventData": "implemented",
    "?XbtpGetPipeNameToHost@@YAJPEAPEAG@Z": "implemented",
    "?XbtpGetPipeNameToSystem@@YAJPEAPEAG@Z": "implemented",
@@ -2704,14 +2714,14 @@
    "XbtpHasSystemGoneDark": "implemented",
    "XbtpIsSystemReady": "implemented",
    "XbtpMarkToolingCritical": "implemented",
-   "?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@1PEAPEAX@Z": "missing",
-   "?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@PEAV?$shared_ptr@VXbtpSession@@@std@@@Z": "missing",
-   "?XbtpOpenSession@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_N@Z": "missing",
-   "?XbtpOpenSessionInternal@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_NI@Z": "missing",
+   "?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@1PEAPEAX@Z": "implemented",
+   "?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@PEAV?$shared_ptr@VXbtpSession@@@std@@@Z": "implemented",
+   "?XbtpOpenSession@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_N@Z": "implemented",
+   "?XbtpOpenSessionInternal@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_NI@Z": "implemented",
    "?XbtpOpenXtcSession@@YAJ_KAEBU_GUID@@1PEAPEAX@Z": "implemented",
    "XbtpSetSystemGoDark": "implemented",
    "XbtpWaitSystemReady": "implemented",
-   "?XbtpWrapDispatcher@@YAJV?$shared_ptr@VXbtpConnectionDispatcher@@@std@@AEBU_GUID@@PEAPEAX@Z": "missing",
+   "?XbtpWrapDispatcher@@YAJV?$shared_ptr@VXbtpConnectionDispatcher@@@std@@AEBU_GUID@@PEAPEAX@Z": "implemented",
    "XbtpConfigureMinimumTransportLogging": "implemented",
    "XbtpConfigureTransportLogging": "implemented",
    "XbtpCreateExtensionMetadata": "implemented",
@@ -2751,12 +2761,12 @@
    "XbtpLinkShutdownHandle": "implemented",
    "XbtpLinkStartRouting": "implemented",
    "XbtpLinkStopRouting": "implemented",
-   "XbtpOpenSession": "missing",
-   "XbtpOpenSession2": "missing",
-   "XbtpOpenSessionEx": "missing",
-   "XbtpOpenSessionEx2": "missing",
-   "XbtpStartDispatcher": "missing",
-   "XbtpStartDispatcherEx": "missing"
+   "XbtpOpenSession": "implemented",
+   "XbtpOpenSession2": "implemented",
+   "XbtpOpenSessionEx": "implemented",
+   "XbtpOpenSessionEx2": "implemented",
+   "XbtpStartDispatcher": "implemented",
+   "XbtpStartDispatcherEx": "implemented"
   },
   "notes": {
    "??0XbtpClientAdapter@@QEAA@XZ": "zeroes state/channel/connection, quiet byte cleared; GUID left as console",
@@ -2764,8 +2774,10 @@
    "??1NpConnection@@UEAA@XZ": "releases pipe handle, events and path BSTR",
    "??1TcpConnection@@UEAA@XZ": "closes listen socket and socket event, frees server name",
    "??1XbtpClientAdapter@@UEAA@XZ": "close session if in session, disconnect, release connection and channel",
+   "??1XbtpConnectionDispatcher@@QEAA@XZ": "Shutdown then frees the impl (console 0x12cc0); second call no-op",
    "??1XbtpExtensionRegistry@@QEAA@XZ": "frees impl; dictionary releases definitions; second call is a no-op",
    "?AddExtension@XbtpExtensionRegistry@@QEAAJV?$shared_ptr@UExtensionDefinition@@@std@@@Z": "by-value shared_ptr taken and released; null -> E_INVALIDARG; same id twice -> 0x80071392",
+   "?AddPipeEndpoint@XbtpConnectionDispatcher@@QEAAJPEBG@Z": "NpConnection::InitializeServer_sp(path) then added to the Run wait set (console 0x13910); no impl -> E_INVALIDARG",
    "?BeginSession@XbtpClientAdapter@@QEAAJAEBU_GUID@@@Z": "BeginSession(ext, 30000)",
    "?BeginSession@XbtpClientAdapter@@QEAAJAEBU_GUID@@K@Z": "negotiate (CreateSessionRequest, response, location), -6 redirect via OpenRedirect + Connect + renegotiate; other status -> 0x8C1101xx",
    "?Connect@XbtpClientAdapter@@QEAAJK@Z": "connect channel if disconnected, ConnectRequest XbtpClientAgent/221000/GameCore, fixed response + agent; status!=0 -> 0x83760002",
@@ -2782,6 +2794,7 @@
    "?DeserializeFixedCreateSessionResponse@@YAJKPEADPEAUXBTP_CREATE_SESSION_RESPONSE_MESSAGE@@@Z": "0x20-byte fixed part",
    "?DeserializeFixedExtensionMessage@@YAJAEBUXBTP_MESSAGE_HEADER@@KPEADAEAUXBTP_BEGIN_MESSAGE@@@Z": "0x20-byte body prefix after header",
    "?Initialize@XbtpClientAdapter@@QEAAJV?$shared_ptr@VXbtpConnection@@@std@@@Z": "null connection -> E_INVALIDARG; by-value shared_ptr always released",
+   "?Initialize@XbtpConnectionDispatcher@@QEAAJV?$shared_ptr@VXbtpExtensionRegistry@@@std@@V?$shared_ptr@VXbtpConnection@@@3@1@Z": "null registry or tcp shared_ptr -> E_INVALIDARG, link may be null; by-value shared_ptrs taken (console 0x12d10)",
    "?Initialize@XbtpExtensionRegistry@@QEAAJXZ": "out of memory -> E_OUTOFMEMORY with m_impl null; overwrites m_impl like the console; does not read the registry hive",
    "?Initialize@XbtpSession@@QEAAJAEBU_GUID@@V?$shared_ptr@VXbtpClientAdapter@@@std@@V?$shared_ptr@VXbtpChannel@@@4@@Z": "null channel -> E_INVALIDARG; copies GUID, adapter and channel; by-value args always released",
    "?InitializeClient@NpConnection@@SAJPEBGPEAPEAV1@@Z": "raw pointer variant of named-pipe client open",
@@ -2813,6 +2826,7 @@
    "?ReceiveOnewayMessage@XbtpSession@@QEAAJKPEAV?$shared_ptr@UXBTP_MESSAGE_BODY@@@std@@@Z": "type 1 receive; close/disconnect -> 0x8C110405 and session torn down",
    "?ReceiveOnewayMessage@XbtpSession@@QEAAJPEAV?$shared_ptr@UXBTP_MESSAGE_BODY@@@std@@@Z": "ReceiveOnewayMessage(30000, ...)",
    "?RegisterExtension@XbtpExtensionRegistry@@QEAAJAEBU_GUID@@PEBG@Z": "null path or already-registered DLL -> E_INVALIDARG; expands %ENV% in the path; console log text kept",
+   "?Run@XbtpConnectionDispatcher@@QEAAJXZ": "waits on shutdown + every endpoint event, accepts, one server adapter per channel: connect (0x183ec), session (0x180a8), loop (0x17e14), HandleMessage/HandleExtensionMessage/RouteMetadataMessage (0x17a48/0x175f8/0x17388), router HandleMessage (0x207bc) with Invoke(handler, session, received, reply); worker threads instead of QueueUserWorkItem",
    "?SendBeginMessage@XbtpSession@@QEAAJKAEBUXBTP_MESSAGE_BODY@@PEAH@Z": "exchange id from channel (client +1, server -1), type 2",
    "?SendEndMessage@XbtpSession@@QEAAJHW4XBTP_STATUS_CODE@@AEBUXBTP_MESSAGE_BODY@@@Z": "type 4 with status in operation slot",
    "?SendMoreMessage@XbtpSession@@QEAAJHAEBUXBTP_MESSAGE_BODY@@@Z": "SendMoreMessage(exch, body, nullptr, nullptr)",
@@ -2825,7 +2839,14 @@
    "?SerializeCreateSessionResponse@@YAJFAEBU_GUID@@W4XBTP_STATUS_CODE@@PEAUUTF8Text@@KPEAKPEAD@Z": "type 0xFFFD, size len+0x20",
    "?SerializeDisconnect@@YAJFW4XBTP_STATUS_CODE@@KPEAKPEAD@Z": "0xC bytes, type 0xFFFF",
    "?SerializeFixedExtensionMessage@@YAJFFAEBU_GUID@@HKAEBUXBTP_MESSAGE_BODY@@KPEAKPEAD@Z": "0x28-byte fixed part, msglen=json+bin+0x20; bodies not written (caller appends)",
+   "?Shutdown@XbtpConnectionDispatcher@@QEAAXXZ": "logs 'Waiting for shutdown to complete', signals shutdown, waits for Run to drain (console 0x138b0)",
+   "?XbtpCompleteSessionSetupInternal@@YAJAEBU_GUID@@_NIV?$shared_ptr@VXbtpConnection@@@std@@PEAPEAVXbtpSession@@@Z": "new session + client adapter: Initialize, Connect, BeginSession, XbtpSession::Initialize; failure deletes *out (console 0x3df0)",
+   "?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@1PEAPEAX@Z": "validates, shared overload, XbtpSessionImpl QI; no handshake, like console 0x4a10",
+   "?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@PEAV?$shared_ptr@VXbtpSession@@@std@@@Z": "NpConnection client, CompleteSessionSetupInternal(ext, false, 30000) (console 0x44f0)",
+   "?XbtpOpenSession@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_N@Z": "OpenSessionInternal(..., quiet, 30000) (console 0x4400)",
+   "?XbtpOpenSessionInternal@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_NI@Z": "null addr -> localhost; port top byte 0 tcp, 1 XbtpLinkConnection (in-process link), else E_INVALIDARG; offline: non-loopback hosts fail like no route (0x8C110303) (console 0x4160)",
    "?XbtpOpenXtcSession@@YAJ_KAEBU_GUID@@1PEAPEAX@Z": "console returns E_NOTIMPL",
+   "?XbtpWrapDispatcher@@YAJV?$shared_ptr@VXbtpConnectionDispatcher@@@std@@AEBU_GUID@@PEAPEAX@Z": "null dispatcher or ppv -> E_INVALIDARG; IXbtpDispatcher e6358d7e/335b4b4b: Shutdown, AddExtension(router from metadata), RegisterExtension, SetSessionKey(<=32 chars); RegisterRedirect returns E_NOTIMPL (Connections::AddRedirect 0x11618 not ported, see BLOCKERS)",
    "XbtpConfigureMinimumTransportLogging": "XtfLogSetMainLevel or E_NOTIMPL",
    "XbtpConfigureTransportLogging": "INIT_HOOK/WSAStartup(0x202) then XtfLogSetMainLevelAndFile, E_NOTIMPL if absent",
    "XbtpGetTransportErrorText": "69-entry console table, \"%s. (0x%08X)\" BSTR + optional action BSTR",
@@ -2857,7 +2878,13 @@
    "XbtpLinkSetupRoutingLog": "console body returns E_NOTIMPL (0x80004001)",
    "XbtpLinkShutdownHandle": "sends END 0xfa000005 once (flag 0x80)",
    "XbtpLinkStartRouting": "console body returns S_OK",
-   "XbtpLinkStopRouting": "console body is a bare ret (void)"
+   "XbtpLinkStopRouting": "console body is a bare ret (void)",
+   "XbtpOpenSession": "address 'host+key': key after '+' into options.SessionKey (0x58 options), prefix as BSTR; key of 32+ chars -> E_INVALIDARG where console wcscpy_s would raise the invalid-parameter handler (console 0x3470)",
+   "XbtpOpenSession2": "GetServerPort (0->0x1073, 1->0x107d, 3->0x1069, top byte kept, else E_INVALIDARG) then Ex2 (console 0x35d0)",
+   "XbtpOpenSessionEx": "Ex2 with null options (console 0x36f0)",
+   "XbtpOpenSessionEx2": "options size 0x58/0x44 else E_INVALIDARG; flags +0x44/+0x48, quiet +0x4c, timeout +0x54 (default 30000); OpenSessionInternal, XbtpSessionImpl QI, SessionHandshake::DoClientHandshake op 0x80000000 (SessionKey/Result/SS) (console 0x3720/0x22bb0)",
+   "XbtpStartDispatcher": "0x2b40: XbtpInitialize, GetServerPort(kind 0/1/3 -> 0x1073/0x107d/0x1069 | high byte), StartDispatcherEx, logs \"Dispatcher started on port %d\"",
+   "XbtpStartDispatcherEx": "0x2c90: ppv null E_INVALIDARG; XbtpInitialize; TcpConnection/registry/link InitializeServer(port); dispatcher Initialize; isSystemServer==1 -> DiscoverRegistryExtensions + AddVmNamedPipeEndpoints 0x2860 (SEVPIPE/XtfLoopback/HEVPIPE, stops at first failure, failure only logged); XbtpDispatcherImpl QI(iid,ppv); CreateServiceInfoExtensionMetadata 0x19c44 {206a9d73-95e4-4a5d-93c2-133c3d924600} ops 1 version/2 extension version/3 transport test/5 VMReady via ServiceOperationAdapter 0x18adc; AddExtension; StartRunning 0x13094 thread (E_UNEXPECTED if already running)"
   }
  },
  "xcrdapi.dll": {
@@ -3277,7 +3304,7 @@
    "XGCreateTexture3DComputer": "implemented",
    "XGCreateTextureComputer": "implemented",
    "XGCreateTextureComputerFromDescriptor": "implemented",
-   "XGDecodeDCC": "stub",
+   "XGDecodeDCC": "implemented",
    "XGEnableExclusiveLocking": "implemented",
    "XGEncodeDCC": "stub",
    "XGEnterExclusiveLock": "implemented",
@@ -3293,8 +3320,8 @@
    "XGComputeTexture2DLayout": "color, linear, MSAA and single-sample RT CMASK planes; MSAA RT FMASK/CMASK planes not modelled",
    "XGCreateTextureComputer": "D3D12 desc to XG desc conversion",
    "XGCreateTextureComputerFromDescriptor": "depth descriptor layouts not modelled, oracle shows remaining mismatches",
-   "XGDecodeDCC": "console multi-stage DCC decoder not ported, returns E_NOTIMPL",
-   "XGEncodeDCC": "console multi-stage DCC encoder not ported, returns E_NOTIMPL"
+   "XGDecodeDCC": "full port of console decoder 0x23210 (unpack, tid swizzle, debase, dedelta, color, signfix, channel, constant, relayout); matches console bytes+hr in oracle_dcc_dec_e2e / oracle_dcc_dec_stages / oracle_dcc_decode_export_shim; native returns E_INVALIDARG (recorded) only where the console output is undefined, proven in oracle_dcc_dec_undefined_classes: color stage integer-divide fault (bpe<4), tid-swizzle convert holes filled from caller stack (incl. return addresses), and segments never written this call (prior buffer bytes); console returns S_OK with junk there and continues, native stops at that block so later blocks are unwritten; negative format rejected (console indexes its format table out of bounds)",
+   "XGEncodeDCC": "encoder 0x26220 ported and matches the console wherever accepted; one config class (bpe 4, swizzle modes 0xf-0x13 with dim 0/3/4) still returns E_NOTIMPL because the tid convert 0x4adc0 copies 16 repeatable but unmodelled stack bytes; see BLOCKERS.md xg_xs XGEncodeDCC"
   }
  },
  "xgs12.dll": {

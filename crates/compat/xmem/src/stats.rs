@@ -393,6 +393,21 @@ mod tests {
     }
 
     #[test]
+    fn series_x_title_partition_size() {
+        assert_eq!(TITLE_LIMIT, 13 * (1 << 30) + (1 << 29));
+        assert_eq!(TITLE_LIMIT >> 30, 13);
+        assert_eq!((TITLE_LIMIT + (1 << 30) - 1) >> 30, 14);
+        let mut v2 = [0u8; 0x50];
+        assert_eq!(unsafe { XMemGetWorkingSetStatistics(0x1000_0001, v2.as_mut_ptr() as *mut c_void) }, 1);
+        let total = u64::from_le_bytes(v2[0..8].try_into().unwrap());
+        let used = u64::from_le_bytes(v2[8..16].try_into().unwrap());
+        assert_eq!(total, 14_495_514_624);
+        assert_eq!(u64::from_le_bytes(v2[0x28..0x30].try_into().unwrap()), total);
+        assert_eq!(u64::from_le_bytes(v2[0x30..0x38].try_into().unwrap()), used);
+        assert!(used > 0 && used <= total);
+    }
+
+    #[test]
     fn page_statistics_are_consistent() {
         let mut f = FreePageStatistics::default();
         assert_eq!(unsafe { XMemGetFreePageStatistics(&mut f) }, 1);

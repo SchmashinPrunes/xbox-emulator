@@ -2869,6 +2869,51 @@
  "console_pending": {
   "xg_xs.dll": [
    "XGDecodeDCC"
+  ],
+  "KernelTraceControl.dll": [
+   "CreateMergedTraceFile"
+  ],
+  "hix_xs.dll": [
+   "WriteHangDump",
+   "DebugLive",
+   "CollectHangSummary"
+  ],
+  "KernelBase.dll": [
+   "AddPackageToFamilyXref",
+   "RemovePackageFromFamilyXref"
+  ],
+  "advapi32.dll": [
+   "LsaDisablePasswordLessCurrentUser",
+   "LsaEnablePasswordLessCurrentUser"
+  ],
+  "advapi32legacy.dll": [
+   "LsaDisablePasswordLessCurrentUser",
+   "LsaEnablePasswordLessCurrentUser"
+  ],
+  "netprofmsvc_c.dll": [
+   "DllMain"
+  ],
+  "wldp.dll": [
+   "WldpSendSmartAppControlBlockToast"
+  ],
+  "xbtp.dll": [
+   "??1XbtpConnectionDispatcher@@QEAA@XZ",
+   "?AddPipeEndpoint@XbtpConnectionDispatcher@@QEAAJPEBG@Z",
+   "?Initialize@XbtpConnectionDispatcher@@QEAAJV?$shared_ptr@VXbtpExtensionRegistry@@@std@@V?$shared_ptr@VXbtpConnection@@@3@1@Z",
+   "?Run@XbtpConnectionDispatcher@@QEAAJXZ",
+   "?Shutdown@XbtpConnectionDispatcher@@QEAAXXZ",
+   "?XbtpCompleteSessionSetupInternal@@YAJAEBU_GUID@@_NIV?$shared_ptr@VXbtpConnection@@@std@@PEAPEAVXbtpSession@@@Z",
+   "?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@1PEAPEAX@Z",
+   "?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@PEAV?$shared_ptr@VXbtpSession@@@std@@@Z",
+   "?XbtpOpenSession@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_N@Z",
+   "?XbtpOpenSessionInternal@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_NI@Z",
+   "?XbtpWrapDispatcher@@YAJV?$shared_ptr@VXbtpConnectionDispatcher@@@std@@AEBU_GUID@@PEAPEAX@Z",
+   "XbtpOpenSession",
+   "XbtpOpenSession2",
+   "XbtpOpenSessionEx",
+   "XbtpOpenSessionEx2",
+   "XbtpStartDispatcher",
+   "XbtpStartDispatcherEx"
   ]
  }
 }

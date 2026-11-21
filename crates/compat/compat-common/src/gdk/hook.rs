@@ -308,6 +308,7 @@ fn lists() -> (Vec<(&'static str, usize, &'static AtomicUsize)>, Vec<(&'static s
     let base: Vec<(&'static str, usize, &'static AtomicUsize)> = targets(registry).iter().map(|x| (x.name, x.hook, x.orig)).collect();
     let mut title = base.clone();
     title.extend(super::identity::targets());
+    title.extend(super::memstatus::targets());
     title.extend(crate::kmd_bridge::targets());
     (base, title)
 }

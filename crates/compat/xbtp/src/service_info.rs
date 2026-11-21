@@ -44,8 +44,8 @@ pub const FILE_VERSION_PROPERTY: &str = "FileVersion";
 pub const PRODUCT_VERSION_PROPERTY: &str = "ProductVersion";
 pub const KERNEL_VERSION_PROPERTY: &str = "KernelVersion";
 pub const ID_PROPERTY: &str = "ID";
-pub const MAX_LOOP_COUNT: f64 = 1_048_576.0;
-pub const MAX_BUFFER_SIZE: f64 = 134_217_728.0;
+pub const MAX_LOOP_COUNT: f64 = 134_217_728.0;
+pub const MAX_BUFFER_SIZE: f64 = 1_048_576.0;
 pub const DEFAULT_RECEIVE_TIMEOUT_MS: u32 = 30_000;
 const MAX_PATH: usize = 0x104;
 
@@ -452,7 +452,11 @@ pub unsafe fn transport_test_execute(session: *mut c_void, received: *mut c_void
     }
     let loop_count = loops as i64 as u32;
     let buffer_size = size as i64 as u32;
-    let mut data = vec![0u8; buffer_size as usize];
+    let mut data: Vec<u8> = Vec::new();
+    if data.try_reserve_exact(buffer_size as usize).is_err() {
+        return E_OUTOFMEMORY;
+    }
+    data.resize(buffer_size as usize, 0);
     for (i, b) in data.iter_mut().enumerate() {
         *b = i as u8;
     }

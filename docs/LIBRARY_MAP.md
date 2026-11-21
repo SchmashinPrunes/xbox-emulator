@@ -390,8 +390,8 @@ Console-related exports of the DLLs in each title's EmbeddedXvd `Windows\System3
 | Library | Folder | Same-named PC DLL | Console-only exports | implemented | forwarded | hooked | pc | title | pending | stub | unverified | missing | Fortnite imports | XDefiant imports | Terraria imports | Trackmania imports | Versions |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | AcpHal.dll | System32 | no | 10 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 6 | 9 | 7 | 0 | Fortnite None; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
-| advapi32.dll | System32/forwarders | yes | 13 | 4 | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
-| advapi32legacy.dll | System32 | no | 207 | 4 | 201 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 1 | 1 | 1 | 1 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| advapi32.dll | System32/forwarders | yes | 13 | 4 | 7 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| advapi32legacy.dll | System32 | no | 207 | 4 | 201 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 1 | 1 | 1 | 1 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | AudioHALWrapper.dll | System32 | no | 32 | 32 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | bootshsvc.dll | System32 | no | 2 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | chad.dll | System32 | no | 7 | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
@@ -432,11 +432,11 @@ Console-related exports of the DLLs in each title's EmbeddedXvd `Windows\System3
 | GDK XUser (QueryApiImpl) | xgameruntime QueryApiImpl (title call sites, analysis/gdk) | no | 37 | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 25 | 18 | 32 | 20 |  |
 | GDK XUserDevice (QueryApiImpl) | xgameruntime QueryApiImpl (title call sites, analysis/gdk) | no | 6 | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | 3 | 6 | 4 |  |
 | GDK XUserGamertag (QueryApiImpl) | xgameruntime QueryApiImpl (title call sites, analysis/gdk) | no | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 1 |  |
-| hix_xs.dll | System32 | no | 8 | 3 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| hix_xs.dll | System32 | no | 8 | 3 | 2 | 0 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | kernel32.dll | System32/forwarders | yes | 11 | 0 | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | kernel32legacy.dll | System32 | no | 303 | 2 | 297 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 5 | 4 | 6 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
-| KernelBase.dll | System32 | yes | 3 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
-| KernelTraceControl.dll | System32 | no | 5 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| KernelBase.dll | System32 | yes | 3 | 1 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| KernelTraceControl.dll | System32 | no | 5 | 4 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | lsasrv.dll | System32 | yes | 5 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | mfh264dec.dll | System32 | no | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite None; XDefiant None; Terraria None; Trackmania None |
 | MFH264Enc.dll | System32 | yes | 2 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite None; XDefiant None; Terraria None; Trackmania None |
@@ -446,7 +446,7 @@ Console-related exports of the DLLs in each title's EmbeddedXvd `Windows\System3
 | minappmodelx.dll | System32 | no | 4 | 0 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | 4 | 4 | 4 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | minuserx.dll | System32 | no | 74 | 32 | 42 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 9 | 10 | 12 | 13 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | msave64xgs.dll | System32 | no | 24 | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
-| netprofmsvc_c.dll | System32 | no | 3 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| netprofmsvc_c.dll | System32 | no | 3 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | newbe.dll | System32 | no | 5 | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 2020.11015.12200.10000; XDefiant 2206.2209.12105.11142; Terraria 2206.2209.12105.11142; Trackmania 2210.2210.12006.15549 |
 | newbe_xs.dll | System32 | no | 6 | 0 | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 2020.11015.12200.10000; XDefiant 2206.2209.12105.11142; Terraria 2206.2209.12105.11142; Trackmania 2210.2210.12006.15549 |
 | ntdll.dll | System32 | yes | 4 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
@@ -466,11 +466,11 @@ Console-related exports of the DLLs in each title's EmbeddedXvd `Windows\System3
 | ttdrecordcpu.dll | System32 | yes | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | XDefiant 1.9.138.0; Terraria 1.9.138.0; Trackmania 1.10.41.0 |
 | wdbase.dll | System32 | no | 29 | 29 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | WerXboxGc.dll | System32 | no | 19 | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
-| wldp.dll | System32 | yes | 13 | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| wldp.dll | System32 | yes | 13 | 10 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xapu.dll | System32 | no | 6 | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xbsc_xs.dll | System32 | no | 41 | 17 | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 2020.11015.12200.10000; XDefiant 2206.2209.12105.11142; Terraria 2206.2209.12105.11142; Trackmania 2210.2210.12006.15549 |
 | xbthunk.dll | System32 | no | 11 | 11 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
-| xbtp.dll | System32 | no | 133 | 114 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 17 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| xbtp.dll | System32 | no | 133 | 114 | 2 | 0 | 0 | 0 | 17 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xcrdapi.dll | System32 | no | 137 | 137 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xdxr.dll | System32 | no | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | XDefiant None; Terraria None; Trackmania None |
 | xdxr_d.dll | System32 | no | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | XDefiant None; Terraria None; Trackmania None |
@@ -478,7 +478,7 @@ Console-related exports of the DLLs in each title's EmbeddedXvd `Windows\System3
 | xfp_gc.dll | System32 | no | 8 | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xfrontpaneldisplay.dll | System32 | no | 8 | 8 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 6 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xg_x.dll | System32 | no | 21 | 19 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 3 | 4 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
-| xg_xs.dll | System32 | no | 23 | 21 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 1 | 1 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
+| xg_xs.dll | System32 | no | 23 | 21 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xgs12.dll | System32 | no | 17 | 14 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xgs12_10.dll | System32 | no | 21 | 18 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
 | xgs12_10d.dll | System32 | no | 21 | 18 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Fortnite 10.0.19041.3948; XDefiant 10.0.22000.4429; Terraria 10.0.22000.4429; Trackmania 10.0.22621.1852 |
@@ -529,8 +529,8 @@ Newer console OS builds add exports; each is its own item in the map and stays `
 
 | Function | Present in | Status |
 |---|---|---|
-| `LsaDisablePasswordLessCurrentUser` | XDefiant, Terraria | missing |
-| `LsaEnablePasswordLessCurrentUser` | XDefiant, Terraria | missing |
+| `LsaDisablePasswordLessCurrentUser` | XDefiant, Terraria | pending |
+| `LsaEnablePasswordLessCurrentUser` | XDefiant, Terraria | pending |
 | `OpenTraceFromBufferStream` | Trackmania | forwarded |
 | `OpenTraceFromFile` | Trackmania | forwarded |
 | `OpenTraceFromRealTimeLogger` | Trackmania | forwarded |
@@ -561,8 +561,8 @@ Newer console OS builds add exports; each is its own item in the map and stays `
 | `LsaIsUserArsoEnabled` | XDefiant, Terraria, Trackmania | forwarded |
 | `LsaProfileDeleted` | XDefiant, Terraria, Trackmania | forwarded |
 | `LsaValidateProcUniqueLuid` | XDefiant, Terraria, Trackmania | forwarded |
-| `LsaDisablePasswordLessCurrentUser` | XDefiant, Terraria | missing |
-| `LsaEnablePasswordLessCurrentUser` | XDefiant, Terraria | missing |
+| `LsaDisablePasswordLessCurrentUser` | XDefiant, Terraria | pending |
+| `LsaEnablePasswordLessCurrentUser` | XDefiant, Terraria | pending |
 
 </details>
 
@@ -642,7 +642,7 @@ Newer console OS builds add exports; each is its own item in the map and stays `
 |---|---|---|
 | `AddData` | XDefiant, Terraria, Trackmania | implemented |
 | `AddStreamingApiObject` | XDefiant, Terraria, Trackmania | implemented |
-| `DebugLive` | XDefiant, Terraria, Trackmania | missing |
+| `DebugLive` | XDefiant, Terraria, Trackmania | pending |
 | `SaveDeveloperBlobInfo` | XDefiant, Terraria, Trackmania | implemented |
 
 </details>
@@ -676,9 +676,9 @@ Newer console OS builds add exports; each is its own item in the map and stays `
 
 | Function | Present in | Status |
 |---|---|---|
-| `AddPackageToFamilyXref` | Fortnite | missing |
+| `AddPackageToFamilyXref` | Fortnite | pending |
 | `GetPackageInstallTime` | Fortnite | implemented |
-| `RemovePackageFromFamilyXref` | Fortnite | missing |
+| `RemovePackageFromFamilyXref` | Fortnite | pending |
 
 </details>
 
@@ -788,7 +788,7 @@ Newer console OS builds add exports; each is its own item in the map and stays `
 | `WldpChangeVulnerableDriverBlocklistState` | Trackmania | implemented |
 | `WldpIsVulnerableDriverBlocklistDisabled` | Trackmania | implemented |
 | `WldpIsVulnerableDriverBlocklistEligibleToDisable` | Trackmania | implemented |
-| `WldpSendSmartAppControlBlockToast` | Trackmania | missing |
+| `WldpSendSmartAppControlBlockToast` | Trackmania | pending |
 
 </details>
 
@@ -971,8 +971,8 @@ Newer console OS builds add exports; each is its own item in the map and stays `
 | `ProcessTraceAddBufferToBufferStream` | forwarded |  | Trackmania |
 | `ProcessTraceBufferDecrementReference` | forwarded |  | Trackmania |
 | `ProcessTraceBufferIncrementReference` | forwarded |  | Trackmania |
-| `LsaDisablePasswordLessCurrentUser` | missing |  | XDefiant, Terraria |
-| `LsaEnablePasswordLessCurrentUser` | missing |  | XDefiant, Terraria |
+| `LsaDisablePasswordLessCurrentUser` | pending |  | XDefiant, Terraria |
+| `LsaEnablePasswordLessCurrentUser` | pending |  | XDefiant, Terraria |
 
 </details>
 
@@ -1187,8 +1187,8 @@ No PC DLL is named advapi32legacy.dll; it is emulated by its compat crate, so no
 | `TreeResetNamedSecurityInfoW` | forwarded |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `UpdateTraceA` | forwarded |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `UpdateTraceW` | forwarded |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `LsaDisablePasswordLessCurrentUser` | missing |  | XDefiant, Terraria |
-| `LsaEnablePasswordLessCurrentUser` | missing |  | XDefiant, Terraria |
+| `LsaDisablePasswordLessCurrentUser` | pending |  | XDefiant, Terraria |
+| `LsaEnablePasswordLessCurrentUser` | pending |  | XDefiant, Terraria |
 
 </details>
 
@@ -1998,9 +1998,9 @@ No PC DLL is named advapi32legacy.dll; it is emulated by its compat crate, so no
 | `SaveDeveloperBlobInfo` | implemented |  | XDefiant, Terraria, Trackmania |
 | `InitializeHix` | forwarded |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `TerminateHix` | forwarded |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `CollectHangSummary` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `DebugLive` | missing |  | XDefiant, Terraria, Trackmania |
-| `WriteHangDump` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `CollectHangSummary` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `DebugLive` | pending |  | XDefiant, Terraria, Trackmania |
+| `WriteHangDump` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
 
 </details>
 
@@ -2339,8 +2339,8 @@ No PC DLL is named kernel32legacy.dll; it is emulated by its compat crate, so no
 | Function | Status | Imported by | Present in |
 |---|---|---|---|
 | `GetPackageInstallTime` | implemented |  | Fortnite |
-| `AddPackageToFamilyXref` | missing |  | Fortnite |
-| `RemovePackageFromFamilyXref` | missing |  | Fortnite |
+| `AddPackageToFamilyXref` | pending |  | Fortnite |
+| `RemovePackageFromFamilyXref` | pending |  | Fortnite |
 
 </details>
 
@@ -2352,7 +2352,7 @@ No PC DLL is named kernel32legacy.dll; it is emulated by its compat crate, so no
 | `StartHeapTrace` | implemented |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `StartKernelTrace` | implemented |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `UpdateHeapTrace` | implemented |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `CreateMergedTraceFile` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `CreateMergedTraceFile` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
 
 </details>
 
@@ -2566,7 +2566,7 @@ No PC DLL is named minuserx.dll; it is emulated by its compat crate, so no row i
 | Function | Status | Imported by | Present in |
 |---|---|---|---|
 | `SvchostPushServiceGlobalsEx` | implemented |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `DllMain` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `DllMain` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `ServiceMain` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
 
 </details>
@@ -2943,9 +2943,9 @@ No PC DLL is named minuserx.dll; it is emulated by its compat crate, so no row i
 | `WldpResetSecurityWatermarkState` | implemented |  | Fortnite |
 | `WldpSetDynamicCodeTrust2` | implemented |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `WldpTraceLoggingWDACBlockDialogShown` | implemented |  | XDefiant, Terraria, Trackmania |
+| `WldpSendSmartAppControlBlockToast` | pending |  | Trackmania |
 | `WldpCheckSecurityWatermarkState` | missing |  | Fortnite |
 | `WldpIsProductionConfigurationInProc` | missing |  | XDefiant, Terraria, Trackmania |
-| `WldpSendSmartAppControlBlockToast` | missing |  | Trackmania |
 
 </details>
 
@@ -3148,23 +3148,23 @@ No PC DLL is named minuserx.dll; it is emulated by its compat crate, so no row i
 | `XbtpWaitSystemReady` | implemented |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `?KdDbgPrint@@YAXPEBD0ZZ` | forwarded |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `?KdDbgPrintV@@YAXPEBD0PEAD@Z` | forwarded |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `??1XbtpConnectionDispatcher@@QEAA@XZ` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?AddPipeEndpoint@XbtpConnectionDispatcher@@QEAAJPEBG@Z` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?Initialize@XbtpConnectionDispatcher@@QEAAJV?$shared_ptr@VXbtpExtensionRegistry@@@std@@V?$shared_ptr@VXbtpConnection@@@3@1@Z` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?Run@XbtpConnectionDispatcher@@QEAAJXZ` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?Shutdown@XbtpConnectionDispatcher@@QEAAXXZ` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?XbtpCompleteSessionSetupInternal@@YAJAEBU_GUID@@_NIV?$shared_ptr@VXbtpConnection@@@std@@PEAPEAVXbtpSession@@@Z` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@1PEAPEAX@Z` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@PEAV?$shared_ptr@VXbtpSession@@@std@@@Z` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?XbtpOpenSession@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_N@Z` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?XbtpOpenSessionInternal@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_NI@Z` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `?XbtpWrapDispatcher@@YAJV?$shared_ptr@VXbtpConnectionDispatcher@@@std@@AEBU_GUID@@PEAPEAX@Z` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `XbtpOpenSession` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `XbtpOpenSession2` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `XbtpOpenSessionEx` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `XbtpOpenSessionEx2` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `XbtpStartDispatcher` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
-| `XbtpStartDispatcherEx` | missing |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `??1XbtpConnectionDispatcher@@QEAA@XZ` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?AddPipeEndpoint@XbtpConnectionDispatcher@@QEAAJPEBG@Z` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?Initialize@XbtpConnectionDispatcher@@QEAAJV?$shared_ptr@VXbtpExtensionRegistry@@@std@@V?$shared_ptr@VXbtpConnection@@@3@1@Z` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?Run@XbtpConnectionDispatcher@@QEAAJXZ` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?Shutdown@XbtpConnectionDispatcher@@QEAAXXZ` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?XbtpCompleteSessionSetupInternal@@YAJAEBU_GUID@@_NIV?$shared_ptr@VXbtpConnection@@@std@@PEAPEAVXbtpSession@@@Z` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@1PEAPEAX@Z` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@PEAV?$shared_ptr@VXbtpSession@@@std@@@Z` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?XbtpOpenSession@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_N@Z` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?XbtpOpenSessionInternal@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_NI@Z` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `?XbtpWrapDispatcher@@YAJV?$shared_ptr@VXbtpConnectionDispatcher@@@std@@AEBU_GUID@@PEAPEAX@Z` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `XbtpOpenSession` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `XbtpOpenSession2` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `XbtpOpenSessionEx` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `XbtpOpenSessionEx2` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `XbtpStartDispatcher` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `XbtpStartDispatcherEx` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
 
 </details>
 
@@ -3419,7 +3419,7 @@ No PC DLL is named minuserx.dll; it is emulated by its compat crate, so no row i
 | `XGTerminateLibrary` | implemented |  | XDefiant, Terraria, Trackmania |
 | `XGValidateDepthStencilSwizzleMode` | implemented |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `XGValidateDescriptor` | implemented |  | XDefiant, Terraria, Trackmania |
-| `XGDecodeDCC` | stub |  | Fortnite, XDefiant, Terraria, Trackmania |
+| `XGDecodeDCC` | pending |  | Fortnite, XDefiant, Terraria, Trackmania |
 | `XGEncodeDCC` | stub |  | Fortnite, XDefiant, Terraria, Trackmania |
 
 </details>
