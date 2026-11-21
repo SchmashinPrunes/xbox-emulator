@@ -150,6 +150,84 @@ fn ds_lds_compute() {
     run_cs_cases("ds_lds", &cs);
 }
 
+/// Value of the inputs `cs_prog` sets up (plus v13 = 0) for thread `t`.
+fn reg_val(r: u32, t: u32) -> u32 {
+    match r {
+        0 => t,
+        2 => dv(t),
+        4 => ev(t),
+        7 => t ^ 1,
+        13 => 0,
+        _ => unreachable!(),
+    }
+}
+
+type At3 = fn(u32, u32, u32) -> u32;
+
+/// LDS atomics without an HLSL Interlocked* equivalent (or with signed / swapped operands),
+/// semantics from the RDNA2 ISA (as encoded by LLVM's AMDGPU backend for GFX10: uinc_wrap /
+/// udec_wrap, DS_CMPST data0 = compare, data1 = new value). Each thread owns one dword, so
+/// order-dependent ops give fixed results; the slot is read back by the neighbour thread.
+#[test]
+fn ds_lds_atomics_ext() {
+    let mut cs = Vec::new();
+    let nb = |t: u32| t ^ 1;
+    // (old register, data0, data1): equal, zero, small neighbouring, negative vs positive.
+    let general: &[(u32, u32, u32)] = &[(4, 2, 0), (4, 4, 0), (0, 7, 0), (13, 2, 0), (13, 13, 0), (4, 0, 0), (0, 4, 0)];
+    let cmp: &[(u32, u32, u32)] = &[(4, 4, 2), (4, 2, 0), (0, 0, 4), (13, 13, 7), (0, 7, 2)];
+    let ops: [(Option<&'static str>, &'static str, u32, At3); 8] = [
+        (Some("ds_sub_u32"), "ds_sub_rtn_u32", 0x01, |o, a, _| o.wrapping_sub(a)),
+        (Some("ds_rsub_u32"), "ds_rsub_rtn_u32", 0x02, |o, a, _| a.wrapping_sub(o)),
+        (Some("ds_inc_u32"), "ds_inc_rtn_u32", 0x03, |o, a, _| if o >= a { 0 } else { o + 1 }),
+        (Some("ds_dec_u32"), "ds_dec_rtn_u32", 0x04, |o, a, _| if o == 0 || o > a { a } else { o - 1 }),
+        (Some("ds_min_i32"), "ds_min_rtn_i32", 0x05, |o, a, _| (o as i32).min(a as i32) as u32),
+        (Some("ds_max_i32"), "ds_max_rtn_i32", 0x06, |o, a, _| (o as i32).max(a as i32) as u32),
+        (Some("ds_cmpst_b32"), "ds_cmpst_rtn_b32", 0x10, |o, a, b| if o == a { b } else { o }),
+        // No plain form: opcode 0x0d is ds_write_b32.
+        (None, "ds_wrxchg_rtn_b32", 0x0d, |_, a, _| a),
+    ];
+    for (m, mr, op, f) in ops {
+        let inputs = if op == 0x10 { cmp } else { general };
+        for &(old, d0, d1) in inputs {
+            let want = move |t: u32| f(reg_val(old, t), reg_val(d0, t), reg_val(d1, t));
+            for rtn in [false, true] {
+                let Some(name) = (if rtn { Some(mr) } else { m }) else { continue };
+                let a = ds(op + if rtn { 0x20 } else { 0 }, 0, 1, d0, d1, 11);
+                let mut b = vec![vop1(1, 13, ic(0))];
+                b.extend_from_slice(&ds(0x0d, 0, 1, old, 0, 0));
+                b.extend_from_slice(&a);
+                b.extend_from_slice(&ds(0x36, 0, 3, 0, 0, 10));
+                if rtn {
+                    cs.push(cc(name, a, b, &[11, 10], &move |t| vec![reg_val(old, t), want(nb(t))]));
+                } else {
+                    cs.push(cc(name, a, b, &[10], &move |t| vec![want(nb(t))]));
+                }
+            }
+        }
+    }
+    // All 64 threads on one dword: exercises the compare-exchange retry loop under contention.
+    // Only order-independent cases (min / max, sub, and inc / dec that never wrap).
+    let init = 0x5aa5_0ff0u32;
+    type At = fn(u32, u32) -> u32;
+    let shared: [(&'static str, u32, u32, At); 5] = [
+        ("ds_sub_u32", 0x01, 2, |a, b| a.wrapping_sub(b)),
+        ("ds_min_i32", 0x05, 2, |a, b| (a as i32).min(b as i32) as u32),
+        ("ds_max_i32", 0x06, 2, |a, b| (a as i32).max(b as i32) as u32),
+        ("ds_inc_u32", 0x03, 14, |a, _| a + 1),
+        ("ds_dec_u32", 0x04, 14, |a, _| a - 1),
+    ];
+    for (m, op, data, f) in shared {
+        let mut b = vec![vop1(1, 12, LIT), init, vop1(1, 13, ic(0)), vop1(1, 14, LIT), 0xffff_ffff];
+        b.extend_from_slice(&ds(0x0d, 0x200, 13, 12, 0, 0));
+        let a = ds(op, 0x200, 13, data, 0, 0);
+        b.extend_from_slice(&a);
+        b.extend_from_slice(&ds(0x36, 0x200, 13, 0, 0, 10));
+        let total = (0..T).fold(init, |acc, t| f(acc, dv(t)));
+        cs.push(cc(m, a, b, &[10], &move |_| vec![total]));
+    }
+    run_cs_cases("ds_lds_ext", &cs);
+}
+
 #[test]
 fn ds_lds_b64_compute() {
     let mut cs = Vec::new();

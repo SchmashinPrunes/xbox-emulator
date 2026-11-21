@@ -3520,29 +3520,62 @@ impl<'a> Emitter<'a> {
                 if self.is_cs
                     && matches!(
                         m.replace("_rtn", "").as_str(),
-                        "ds_add_u32" | "ds_min_u32" | "ds_max_u32" | "ds_and_b32" | "ds_or_b32" | "ds_xor_b32"
+                        "ds_add_u32"
+                            | "ds_sub_u32"
+                            | "ds_rsub_u32"
+                            | "ds_inc_u32"
+                            | "ds_dec_u32"
+                            | "ds_min_i32"
+                            | "ds_max_i32"
+                            | "ds_min_u32"
+                            | "ds_max_u32"
+                            | "ds_and_b32"
+                            | "ds_or_b32"
+                            | "ds_xor_b32"
+                            | "ds_wrxchg_b32"
+                            | "ds_cmpst_b32"
                     ) =>
             {
                 // Atomic read-modify-write on group-shared memory (the `_rtn` forms also
-                // return the old value) → the matching HLSL Interlocked* intrinsic.
+                // return the old value). Ops with an HLSL Interlocked* intrinsic use it;
+                // rsub / inc / dec and the signed min / max use a compare-exchange loop. Semantics as in
+                // the RDNA2 ISA reference (DS_INC_U32: old >= DATA ? 0 : old + 1;
+                // DS_DEC_U32: old == 0 || old > DATA ? DATA : old - 1; DS_CMPST_B32: DATA is
+                // the compare value, DATA2 the value stored on a match).
                 self.uses_lds = true;
                 self.lds_order(true, true);
-                let func = match m.replace("_rtn", "").as_str() {
-                    "ds_add_u32" => "InterlockedAdd",
-                    "ds_min_u32" => "InterlockedMin",
-                    "ds_max_u32" => "InterlockedMax",
-                    "ds_and_b32" => "InterlockedAnd",
-                    "ds_or_b32" => "InterlockedOr",
-                    _ => "InterlockedXor",
-                };
                 let off = ins.aux.imm as u32 & 0xffff;
                 let addr = r(&s[0])?;
+                let x0 = r(&s[1])?;
                 let t = self.tmp;
                 self.tmp += 1;
-                self.line(&format!(
-                    "uint t{t} = 0u; if (exec_lo & 1u) {{ {func}(tb_lds[(({addr} + {off:#x}u) >> 2) & 8191u], {}, t{t}); }}",
-                    r(&s[1])?
-                ));
+                let word = format!("tb_lds[(({addr} + {off:#x}u) >> 2) & 8191u]");
+                let body = match m.replace("_rtn", "").as_str() {
+                    "ds_add_u32" => format!("InterlockedAdd({word}, {x0}, t{t});"),
+                    "ds_sub_u32" => format!("InterlockedAdd({word}, 0u - ({x0}), t{t});"),
+                    "ds_min_u32" => format!("InterlockedMin({word}, {x0}, t{t});"),
+                    "ds_max_u32" => format!("InterlockedMax({word}, {x0}, t{t});"),
+                    "ds_and_b32" => format!("InterlockedAnd({word}, {x0}, t{t});"),
+                    "ds_or_b32" => format!("InterlockedOr({word}, {x0}, t{t});"),
+                    "ds_xor_b32" => format!("InterlockedXor({word}, {x0}, t{t});"),
+                    "ds_wrxchg_b32" => format!("InterlockedExchange({word}, {x0}, t{t});"),
+                    "ds_cmpst_b32" => format!("InterlockedCompareExchange({word}, {x0}, {}, t{t});", r(&s[2])?),
+                    op => {
+                        let c = format!("t{t}c");
+                        let new = match op {
+                            "ds_rsub_u32" => format!("({x0}) - {c}"),
+                            // tb_lds is uint, so a signed Interlocked overload is not guaranteed.
+                            "ds_min_i32" => format!("asuint(min(asint({c}), asint({x0})))"),
+                            "ds_max_i32" => format!("asuint(max(asint({c}), asint({x0})))"),
+                            "ds_inc_u32" => format!("(({c} >= ({x0})) ? 0u : ({c} + 1u))"),
+                            _ => format!("((({c} == 0u) || ({c} > ({x0}))) ? ({x0}) : ({c} - 1u))"),
+                        };
+                        format!(
+                            "uint {c} = {word}; [allow_uav_condition] for (uint t{t}i = 0u; t{t}i < 4096u; t{t}i++) {{ uint t{t}p; InterlockedCompareExchange({word}, {c}, {new}, t{t}p); if (t{t}p == {c}) break; {c} = t{t}p; }} t{t} = {c};"
+                        )
+                    }
+                };
+                self.line(&format!("uint t{t} = 0u; if (exec_lo & 1u) {{ {body} }}"));
                 if m.contains("_rtn") {
                     self.wv(&d.ok_or("no dst")?, &format!("t{t}"))?;
                 }

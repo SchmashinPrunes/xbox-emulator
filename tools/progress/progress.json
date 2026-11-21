@@ -462,7 +462,22 @@
    "v_cmpx_nle_f64",
    "v_cmpx_neq_f64",
    "v_cmpx_nlt_f64",
-   "v_cmpx_tru_f64"
+   "v_cmpx_tru_f64",
+   "ds_cmpst_b32",
+   "ds_cmpst_rtn_b32",
+   "ds_dec_rtn_u32",
+   "ds_dec_u32",
+   "ds_inc_rtn_u32",
+   "ds_inc_u32",
+   "ds_max_i32",
+   "ds_max_rtn_i32",
+   "ds_min_i32",
+   "ds_min_rtn_i32",
+   "ds_rsub_rtn_u32",
+   "ds_rsub_u32",
+   "ds_sub_rtn_u32",
+   "ds_sub_u32",
+   "ds_wrxchg_rtn_b32"
   ]
  },
  "updated": "2026-11-21",
