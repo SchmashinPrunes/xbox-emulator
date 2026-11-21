@@ -7,9 +7,9 @@
    "pct": 100.0
   },
   "d3d12x_methods": {
-   "done": 190,
+   "done": 192,
    "total": 200,
-   "pct": 95.0
+   "pct": 96.0
   },
   "rdna2_instructions": {
    "done": 676,
