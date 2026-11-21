@@ -5,9 +5,12 @@ pub mod chk;
 pub mod monitor;
 pub mod debugclient;
 pub mod server;
+pub mod client;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod client_tests;
 
 use xtfmsg::com::metadata::OperationFn;
 use xtfmsg::com::Obj;

@@ -107,7 +107,7 @@ impl<'a> Con<'a> {
         for i in 0..3 {
             self.set_surf(i, &d.s[i]);
         }
-        let s = *super::addr::SCRATCH.lock().unwrap();
+        let s = d.sc;
         unsafe { core::ptr::copy_nonoverlapping(s.as_ptr(), self.or.rva(0x2d4d0) as *mut u8, 64) };
     }
 
@@ -123,7 +123,7 @@ pub(super) fn same(d: &Dcc, c: &Con, what: &str) {
     }
     let mut cs = [0u8; 64];
     unsafe { core::ptr::copy_nonoverlapping(c.or.rva(0x2d4d0) as *const u8, cs.as_mut_ptr(), 64) };
-    assert_eq!(*super::addr::SCRATCH.lock().unwrap(), cs, "{what}: scratch");
+    assert_eq!(d.sc, cs, "{what}: scratch");
 }
 
 pub(super) fn same_object(d: &Dcc, c: &Con, what: &str) {

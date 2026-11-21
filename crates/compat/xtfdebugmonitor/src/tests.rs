@@ -16,6 +16,8 @@ const CHILD_ENV: &str = "XTFDEBUGMONITOR_CHILD";
 const CHILD_TEST: &str = "tests::debug_child_main";
 const CHILD_TICK: &str = "xtfdebugmonitor child tick";
 
+pub static LIVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 struct ForceNull;
 
 impl ForceNull {
@@ -635,10 +637,12 @@ struct LiveRun {
     session: *mut fixture::Session,
     done: mpsc::Receiver<HRESULT>,
     finished: Option<HRESULT>,
+    _guard: std::sync::MutexGuard<'static, ()>,
 }
 
 impl LiveRun {
     fn start(mode: &str, filter: u32) -> LiveRun {
+        let guard = LIVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         load_xbtp();
         let child = Command::new(std::env::current_exe().unwrap())
             .args([CHILD_TEST, "--exact", "--ignored", "--test-threads=1", "-q"])
@@ -658,7 +662,7 @@ impl LiveRun {
             let (hr, _) = unsafe { call(monitor_process_handler, s, Some(&format!("{{\"ProcessId\":{pid},\"FilterFlags\":{filter}}}"))) };
             let _ = tx.send(hr);
         });
-        LiveRun { child, pid, session, done, finished: None }
+        LiveRun { child, pid, session, done, finished: None, _guard: guard }
     }
 
     fn wait_sent(&self, what: &str, pred: impl Fn(&str) -> bool) -> String {
