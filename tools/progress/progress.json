@@ -834,7 +834,10 @@
    "xvd": "input/xdefiant/EmbeddedXvd/Windows",
    "run_evidence": false,
    "unverified_binaries": [],
-   "unverified_modules": []
+   "unverified_modules": [],
+   "emulator_replaces": {
+    "xcurl.dll": "run-xdefiant stages the emulator's target/release/xcurl.dll as Mount/xcurl.dll in place of the title's XCurl.dll"
+   }
   },
   {
    "name": "Terraria",
@@ -865,6 +868,19 @@
    ],
    "xvd": "input/trackmania/EmbeddedXvd/Windows",
    "summary": "Nadeo GBX engine (ManiaPlanet lineage), native C++ GameCore **Xbox One** build (`TargetDeviceFamily=\"XboxOne\"`, PDB folder `Release_Gaming.Xbox.XboxOne.x64`, build id `2024-04-30_c8c94a9ed_..._XB1`), GDK edition string `October 2022 GRDK` in the EXE, Ubisoft UbiServices SDK 2020.Release.62. Scanned: `Mount` (GbxGame.exe, GameChat2.dll 2210, XCurl.dll 2210, MSVC 14.29 CRT) and `Mount/aegir` (aegir.dll, 36 MB, a WebKit/JavaScriptCore UI engine: 12,887 `WebCore`/`JSC` exports). GameChat2.dll and aegir.dll are not in GbxGame.exe's import table; they are loaded at run time (the EXE carries `aegir.dll` loader strings). Imports `d3d12_x.dll` / `xg_x.dll` / `dxcompiler_x.dll` (Xbox One variants, not the Scarlett `_xs` ones); the emulator provides them as separate crates with the console's export ordinals, and the remaining gaps are stubs. XGameRuntime is loaded by name.",
+   "run_evidence": false,
+   "unverified_binaries": [],
+   "unverified_modules": []
+  },
+  {
+   "name": "Minecraft",
+   "build": "1.18.3064.0 Preview, Scarlett",
+   "exe": "Minecraft.Windows.exe",
+   "exe_size": 88188928,
+   "base": "repo",
+   "binaries": "games/Microsoft.MinecraftBeta_1.18.3064.0_neutral__8wekyb3d8bbwe_xs-PATCHED/Microsoft.MinecraftBeta_1.18.3064.0_neutral__8wekyb3d8bbwe_xs",
+   "os_build_hint": "10.0.22000.3160",
+   "summary": "Minecraft Preview (Bedrock) GameCore **Scarlett** build (`TargetDeviceFamily=\"Scarlett\"` in MicrosoftGame.Config), title id 639AA8DD. Scanned: the package root (Minecraft.Windows.exe, XCurl.dll, fmod.dll, v8, cohtml / RenoirCore UI, nvngx_dlss, dxcompiler / dxil, MSVC 14.x CRT); `data/` holds no PE files. `Minecraft.Windows.exe` is a patched copy of `Minecraft.Windows.exe.original` with an identical import table. No EmbeddedXvd was extracted (only `gameos.xvd`), so the title has no console-OS export table of its own: console attribution uses the union of the other titles' EmbeddedXvd, and the OS build used for per-build tables (22000) comes from the `10.0.22000.3160` GRDK link string in the EXE (October 2021 / March 2022 GRDK), not from the console OS. XGameRuntime is loaded by name (`xgameruntime.dll` + `QueryApiImpl`, 124 call sites in the EXE and 16 in XCurl.dll by the analysis/gdk scanner).",
    "run_evidence": false,
    "unverified_binaries": [],
    "unverified_modules": []
@@ -1094,7 +1110,6 @@
     "MFCreateDXGISurfaceBufferX": "forwarded",
     "LFGetGlobalPool": "implemented",
     "MFJoinIoPort": "implemented",
-    "MFGetPlatform": "stub",
     "MFBlockThread": "implemented",
     "MFUnblockThread": "implemented",
     "MFGetPrivateWorkqueues": "implemented"
@@ -1103,7 +1118,7 @@
     "MFCreateDXGISurfaceBufferX": "forwards to PC MFCreateDXGISurfaceBuffer (console drops fBottomUp for D3D12 resources)",
     "LFGetGlobalPool": "returns NULL, as the console code does (xor eax,eax)",
     "MFJoinIoPort": "MFJoinWorkQueue(5, handle, &cookie), as the console code does",
-    "MFGetPlatform": "console 0x7db0 returns &CMFPlatform (0x6b910, a 0x4340-byte internal C++ object: provider array +0x100, locks +0x42b8, counts +0x42b0/+0x4300) once started; only console-internal mfplat code consumes it, no title or shipped console DLL imports it; porting needs the whole console work-queue provider system, which the crate forwards to PC mfplat",
+    "MFGetPlatform": "not exported by the emulator's mfplat.dll (target/release/mfplat.dll has no MFGetPlatform; not in the crate's forward list either): console 0x7db0 returns &CMFPlatform (0x6b910, a 0x4340-byte internal C++ object) once started; only console-internal mfplat code consumes it, no title or shipped console DLL imports it",
     "MFBlockThread": "console 0xece0/0xac34: MF_E_SHUTDOWN unless started, then provider[1] (the 0x170-byte provider, vtable 0x5c438) is asked slot 18 (0x1bd50: returns 0 unless its blocked flag +0x164 is set) and only then slot 16 (0x19dd0, sets that flag); the flag is written nowhere else, so the console call is S_OK with no effect once started; test startup_and_console_only_exports_follow_console_semantics",
     "MFUnblockThread": "console 0xf860/0xe310: same started check and provider[1] slot 18 guard, slot 17 (0x1dd20) returns S_OK; so MF_E_SHUTDOWN before MFStartup, S_OK after; test startup_and_console_only_exports_follow_console_semantics",
     "MFGetPrivateWorkqueues": "console 0xef90: MF_E_SHUTDOWN before MFStartup, E_INVALIDARG for NULL, else *out = platform+0x4330, which MFStartup (0xbf28 at 0xc1c8) sets to 1 when HKLM\\SOFTWARE\\Microsoft\\Windows Media Foundation\\RT value AssignQueues (REG_DWORD, read by 0xb820/0xd3b8) is nonzero; the crate reads the same value on each successful MFStartup; test startup_and_console_only_exports_follow_console_semantics"
@@ -1212,12 +1227,14 @@
     ],
     "XAccessibility+XSpeechSynthesizer(d722b373) slot 9 (synth_create)": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAccessibility+XSpeechSynthesizer(d722b373) slot 10 (synth_close)": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1235,24 +1252,28 @@
     ],
     "XAccessibility+XSpeechSynthesizer(d722b373) slot 13 (stream_from_text)": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAccessibility+XSpeechSynthesizer(d722b373) slot 14 (stream_close)": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAccessibility+XSpeechSynthesizer(d722b373) slot 15 (stream_size)": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAccessibility+XSpeechSynthesizer(d722b373) slot 16 (stream_data)": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1398,23 +1419,29 @@
     "XTaskQueueGetCurrentProcessTaskQueue",
     "XAsync/XTaskQueue/XThread(073b7dcb, emulated) slot 27 (thread_set_time_sensitive)",
     "XThreadAssertNotTimeSensitive",
-    "XAsync/XTaskQueue/XThread(073b7dcb, emulated) slot 30 (thread_is_time_sensitive)"
+    "XAsync/XTaskQueue/XThread(073b7dcb, emulated) slot 30 (thread_is_time_sensitive)",
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 23 (not served)",
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 24 (not served)",
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 26 (not served)"
    ],
    "titles": {
     "XAsyncGetStatus": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAsyncGetResultSize": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAsyncCancel": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1424,84 +1451,98 @@
     ],
     "XAsyncBegin": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAsyncSchedule": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAsyncComplete": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAsyncGetResult": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueCreate": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueCreateComposite": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueGetPort": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueDuplicateHandle": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueDispatch": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueCloseHandle": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAsync/XTaskQueue/XThread(073b7dcb, emulated) slot 18 (q_submit)": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueSubmitDelayedCallback": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueTerminate": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XTaskQueueGetCurrentProcessTaskQueue": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1512,13 +1553,28 @@
     ],
     "XThreadAssertNotTimeSensitive": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XAsync/XTaskQueue/XThread(073b7dcb, emulated) slot 30 (thread_is_time_sensitive)": [
      "Terraria"
+    ],
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 23 (not served)": [
+     "Minecraft"
+    ],
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 24 (not served)": [
+     "Minecraft"
+    ],
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 26 (not served)": [
+     "Minecraft"
     ]
+   },
+   "status": {
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 23 (not served)": "missing",
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 24 (not served)": "missing",
+    "XAsync/XTaskQueue/XThread(073b7dcb) slot 26 (not served)": "missing"
    }
   },
   "GDK XDisplay (QueryApiImpl)": {
@@ -1545,6 +1601,7 @@
    ],
    "titles": {
     "XError(8ca467f7) slot 3 (error_report)": [
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1569,12 +1626,14 @@
    "titles": {
     "XGameGetXboxTitleId": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XLaunchNewGame": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ]
    }
@@ -1588,6 +1647,7 @@
    "titles": {
     "XGameEventWrite": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1604,12 +1664,14 @@
    "titles": {
     "XGameInviteRegisterForEvent": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XGameInviteUnregisterForEvent": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1625,6 +1687,7 @@
    "titles": {
     "XGameRuntimeIsFeatureAvailable": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1681,18 +1744,22 @@
     ],
     "XGameSaveDeleteContainer": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ],
     "XGameSaveGetContainerInfo": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ],
     "XGameSaveEnumerateContainerInfo": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ],
     "XGameSaveCreateContainer": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
@@ -1701,40 +1768,49 @@
     ],
     "XGameSaveEnumerateBlobInfo": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
     "XGameSaveReadBlobData": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ],
     "XGameSaveCreateUpdate": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
     "XGameSaveCloseUpdate": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
     "XGameSaveSubmitBlobWrite": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
     "XGameSaveSubmitUpdate": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ],
     "XGameSave(704c3f58..6ee2) slot 3 (init_provider)": [
+     "Minecraft",
      "Terraria"
     ],
     "XGameSave(704c3f58..6ee2) slot 6 (close_provider)": [
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
     "XGameSave(704c3f58..6ee2) slot 7 (get_quota)": [
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
@@ -1751,13 +1827,16 @@
      "Terraria"
     ],
     "XGameSave(704c3f58..6ee2) slot 15 (enumerate_containers_by_name)": [
+     "Minecraft",
      "Terraria"
     ],
     "XGameSave(704c3f58..6ee2) slot 17 (close_provider)": [
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
     "XGameSave(704c3f58..6ee2) slot 19 (enumerate_blobs_by_name)": [
+     "Minecraft",
      "Terraria"
     ],
     "XGameSave(704c3f58..6ee2) slot 21 (read_blob_data_async)": [
@@ -1769,6 +1848,7 @@
      "Trackmania"
     ],
     "XGameSave(704c3f58..6ee2) slot 26 (submit_blob_delete)": [
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
@@ -1810,7 +1890,10 @@
     "XGameUi(72c4e70f) slot 26 (web_auth_result)",
     "XGameUi(72c4e70f) slot 27 (web_auth_options_async)",
     "XGameUi(72c4e70f) slot 30 (mpa_invite_async)",
-    "XGameUi(72c4e70f) slot 31 (status_result)"
+    "XGameUi(72c4e70f) slot 31 (status_result)",
+    "XGameUi(fc0b9bd0) slot 17 (not served)",
+    "XGameUi(fc0b9bd0) slot 18 (not served)",
+    "XGameUi(fc0b9bd0) slot 19 (not served)"
    ],
    "titles": {
     "XGameUiShowMessageDialogAsync": [
@@ -1913,7 +1996,21 @@
     ],
     "XGameUi(72c4e70f) slot 31 (status_result)": [
      "Terraria"
+    ],
+    "XGameUi(fc0b9bd0) slot 17 (not served)": [
+     "Minecraft"
+    ],
+    "XGameUi(fc0b9bd0) slot 18 (not served)": [
+     "Minecraft"
+    ],
+    "XGameUi(fc0b9bd0) slot 19 (not served)": [
+     "Minecraft"
     ]
+   },
+   "status": {
+    "XGameUi(fc0b9bd0) slot 17 (not served)": "missing",
+    "XGameUi(fc0b9bd0) slot 18 (not served)": "missing",
+    "XGameUi(fc0b9bd0) slot 19 (not served)": "missing"
    }
   },
   "GDK XLaunchUri (QueryApiImpl)": {
@@ -1927,6 +2024,7 @@
    "titles": {
     "XLaunchUri": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -1979,51 +2077,60 @@
      "Terraria"
     ],
     "XNetworking(37e56907) slot 8 (security_async)": [
+     "Minecraft",
      "Terraria",
      "XDefiant"
     ],
     "XNetworkingQuerySecurityInformationForUrlUtf16AsyncResultSize": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XNetworking(37e56907) slot 10 (security_result)": [
+     "Minecraft",
      "Terraria",
      "XDefiant"
     ],
     "XNetworkingQuerySecurityInformationForUrlUtf16Async": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XNetworkingQuerySecurityInformationForUrlUtf16AsyncResult": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XNetworkingVerifyServerCertificate": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XNetworkingGetConnectivityHint": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XNetworkingRegisterConnectivityHintChanged": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XNetworkingUnregisterConnectivityHintChanged": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2062,7 +2169,8 @@
     "XPackage(f92d8712) slot 26 (close_handle)",
     "XPackage(f92d8712) slot 30 (get_write_stats)",
     "XPackage(f92d8712) slot 33 (enumerate_features)",
-    "XPackage(f92d8712) slot 36 (register_installed)"
+    "XPackage(f92d8712) slot 36 (register_installed)",
+    "XPackage(3720de07) slot 11 (not served)"
    ],
    "titles": {
     "XPackageGetCurrentProcessPackageIdentifier": [
@@ -2148,7 +2256,13 @@
      "Terraria",
      "Trackmania",
      "XDefiant"
+    ],
+    "XPackage(3720de07) slot 11 (not served)": [
+     "Minecraft"
     ]
+   },
+   "status": {
+    "XPackage(3720de07) slot 11 (not served)": "missing"
    }
   },
   "GDK XPersistentLocalStorage (QueryApiImpl)": {
@@ -2157,23 +2271,38 @@
    "functions": [
     "XPersistentLocalStorage(d29411df) slot 3 (pls_path_size)",
     "XPersistentLocalStorageGetPath",
-    "XPersistentLocalStorageGetSpaceInfo"
+    "XPersistentLocalStorageGetSpaceInfo",
+    "XPersistentLocalStorage(d29411df) slot 6 (not served)",
+    "XPersistentLocalStorage(d29411df) slot 7 (not served)"
    ],
    "titles": {
     "XPersistentLocalStorage(d29411df) slot 3 (pls_path_size)": [
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XPersistentLocalStorageGetPath": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XPersistentLocalStorageGetSpaceInfo": [
-     "Fortnite"
+     "Fortnite",
+     "Minecraft"
+    ],
+    "XPersistentLocalStorage(d29411df) slot 6 (not served)": [
+     "Minecraft"
+    ],
+    "XPersistentLocalStorage(d29411df) slot 7 (not served)": [
+     "Minecraft"
     ]
+   },
+   "status": {
+    "XPersistentLocalStorage(d29411df) slot 6 (not served)": "missing",
+    "XPersistentLocalStorage(d29411df) slot 7 (not served)": "missing"
    }
   },
   "GDK XStore (QueryApiImpl)": {
@@ -2264,18 +2393,21 @@
     ],
     "XStoreCreateContext": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XStoreCloseContextHandle": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XStoreQueryAssociatedProductsAsync": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2293,10 +2425,12 @@
     ],
     "XStoreQueryProductsResult": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ],
     "XStoreQueryEntitledProductsAsync": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2321,18 +2455,21 @@
     ],
     "XStoreEnumerateProductsQuery": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XStoreProductsQueryHasMorePages": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XStoreProductsQueryNextPageAsync": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2345,6 +2482,7 @@
     ],
     "XStoreCloseProductsQueryHandle": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2382,9 +2520,11 @@
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 28 (game_license_async)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 29 (game_license_result)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 30 (addons_async)": [
@@ -2413,39 +2553,50 @@
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 37 (collections_id_async)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 38 (result_size)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 39 (string_result)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 40 (purchase_id_async)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 41 (result_size)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 42 (string_result)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 43 (license_token_async)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 44 (result_size)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 45 (string_result)": [
+     "Minecraft",
      "Terraria"
     ],
     "XStoreShowPurchaseUIAsync": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "XDefiant"
     ],
     "XStoreShowPurchaseUIResult": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "XDefiant"
     ],
@@ -2502,11 +2653,13 @@
      "Terraria"
     ],
     "XStore(de3dbdd4) slot 66 (register_changed)": [
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XStore(de3dbdd4) slot 67 (unregister_changed)": [
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2542,7 +2695,8 @@
     "XSystemGetConsoleId",
     "XSystemGetXboxLiveSandboxId",
     "XSystem(67ce4bfc) slot 5 (get_app_device_id)",
-    "XSystem(6fd71f09) slot 4 (get_app_device_id)"
+    "XSystem(6fd71f09) slot 4 (get_app_device_id)",
+    "XSystem(6fd71f09) slot 5 (not served)"
    ],
    "titles": {
     "XSystemGetConsoleId": [
@@ -2559,8 +2713,15 @@
      "Terraria"
     ],
     "XSystem(6fd71f09) slot 4 (get_app_device_id)": [
+     "Minecraft",
      "Terraria"
+    ],
+    "XSystem(6fd71f09) slot 5 (not served)": [
+     "Minecraft"
     ]
+   },
+   "status": {
+    "XSystem(6fd71f09) slot 5 (not served)": "missing"
    }
   },
   "GDK XSystemAnalytics (QueryApiImpl)": {
@@ -2572,6 +2733,7 @@
    "titles": {
     "XSystemGetAnalyticsInfo": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2618,39 +2780,46 @@
     "XUserResolvePrivilegeWithUiResult",
     "XUserGetTokenAndSignatureResultSize",
     "XUserGetTokenAndSignatureUtf16ResultSize",
-    "XUserResolveIssueWithUiResult"
+    "XUserResolveIssueWithUiResult",
+    "XUser(eb9bf948) slot 13 (not served)"
    ],
    "titles": {
     "XUserDuplicateHandle": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XUserCloseHandle": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XUserCompare": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ],
     "XUserAddAsync": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XUserAddResult": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XUserGetId": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2664,6 +2833,7 @@
     ],
     "XUserUnregisterForChangeEvent": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2674,17 +2844,20 @@
     ],
     "XUserGetLocalId": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XUserFindUserByLocalId": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
     "XUserFindUserById": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
@@ -2693,6 +2866,7 @@
     ],
     "XUserGetState": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2716,12 +2890,14 @@
     ],
     "XUserCheckPrivilege": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XUserResolvePrivilegeWithUiAsync": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2733,6 +2909,7 @@
     ],
     "XUserGetTokenAndSignatureAsync": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2744,6 +2921,7 @@
     ],
     "XUserGetTokenAndSignatureResult": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2767,6 +2945,7 @@
     ],
     "XUserRegisterForChangeEvent": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2778,10 +2957,12 @@
      "Terraria"
     ],
     "XUserResolvePrivilegeWithUiResult": [
-     "Fortnite"
+     "Fortnite",
+     "Minecraft"
     ],
     "XUserGetTokenAndSignatureResultSize": [
      "Fortnite",
+     "Minecraft",
      "Terraria"
     ],
     "XUserGetTokenAndSignatureUtf16ResultSize": [
@@ -2789,7 +2970,13 @@
     ],
     "XUserResolveIssueWithUiResult": [
      "Fortnite"
+    ],
+    "XUser(eb9bf948) slot 13 (not served)": [
+     "Minecraft"
     ]
+   },
+   "status": {
+    "XUser(eb9bf948) slot 13 (not served)": "missing"
    }
   },
   "GDK XUserDevice (QueryApiImpl)": {
@@ -2806,17 +2993,20 @@
    "titles": {
     "XUserFindForDevice": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania"
     ],
     "XUserRegisterForDeviceAssociationChanged": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ],
     "XUserUnregisterForDeviceAssociationChanged": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
@@ -2844,10 +3034,56 @@
    "titles": {
     "XUserGetGamertag": [
      "Fortnite",
+     "Minecraft",
      "Terraria",
      "Trackmania",
      "XDefiant"
     ]
+   }
+  },
+  "GDK 0a2192aa (QueryApiImpl)": {
+   "file": "crates/compat/compat-common/src/gdk/mod.rs",
+   "dir": "xgameruntime QueryApiImpl (title call sites, analysis/gdk)",
+   "functions": [
+    "0a2192aa(5f5e5169) slot 3 (not served)",
+    "0a2192aa(5f5e5169) slot 6 (not served)",
+    "0a2192aa(5f5e5169) slot 7 (not served)",
+    "0a2192aa(5f5e5169) slot 8 (not served)",
+    "0a2192aa(5f5e5169) slot 12 (not served)",
+    "0a2192aa(5f5e5169) slot 13 (not served)",
+    "0a2192aa(5f5e5169) slot 17 (not served)"
+   ],
+   "titles": {
+    "0a2192aa(5f5e5169) slot 3 (not served)": [
+     "Minecraft"
+    ],
+    "0a2192aa(5f5e5169) slot 6 (not served)": [
+     "Minecraft"
+    ],
+    "0a2192aa(5f5e5169) slot 7 (not served)": [
+     "Minecraft"
+    ],
+    "0a2192aa(5f5e5169) slot 8 (not served)": [
+     "Minecraft"
+    ],
+    "0a2192aa(5f5e5169) slot 12 (not served)": [
+     "Minecraft"
+    ],
+    "0a2192aa(5f5e5169) slot 13 (not served)": [
+     "Minecraft"
+    ],
+    "0a2192aa(5f5e5169) slot 17 (not served)": [
+     "Minecraft"
+    ]
+   },
+   "status": {
+    "0a2192aa(5f5e5169) slot 3 (not served)": "missing",
+    "0a2192aa(5f5e5169) slot 6 (not served)": "missing",
+    "0a2192aa(5f5e5169) slot 7 (not served)": "missing",
+    "0a2192aa(5f5e5169) slot 8 (not served)": "missing",
+    "0a2192aa(5f5e5169) slot 12 (not served)": "missing",
+    "0a2192aa(5f5e5169) slot 13 (not served)": "missing",
+    "0a2192aa(5f5e5169) slot 17 (not served)": "missing"
    }
   }
  },
