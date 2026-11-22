@@ -1005,3 +1005,18 @@ fn image_mimg_load_mip_selects_the_level() {
     }
     run_mem_cases("mimg_load_mip", &cs);
 }
+
+#[test]
+fn image_glc_and_dlc_accesses_are_globally_coherent() {
+    for (bits, store, want) in [(0u32, true, false), (1 << 13, true, true), (1 << 7, true, true), (1 << 13, false, false)] {
+        let mut op = mimg(0x00, 0xf, 1, 1, 4, 16, 0).to_vec();
+        op[0] |= bits;
+        if store {
+            op.extend_from_slice(&mimg(0x08, 0xf, 1, 1, 4, 16, 0));
+        }
+        let mut pre = Prog::new();
+        pre.vv(1, 2).vv(2, 3);
+        let h = translate(&extract(&build(&pre, &op, 4, 4, true), false)).unwrap_or_else(|e| panic!("bits {bits:#x} store {store}: {e}")).hlsl;
+        assert_eq!(h.contains("globallycoherent RWTexture2D"), want, "bits {bits:#x} store {store}:\n{h}");
+    }
+}

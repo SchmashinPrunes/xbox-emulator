@@ -601,6 +601,8 @@ struct Emitter<'a> {
     uses_trans16: bool,
     uses_trans32: bool,
     uav_mips: BTreeSet<u32>,
+    coherent_read: BTreeSet<u32>,
+    uav_written: BTreeSet<u32>,
     tex_mips: BTreeSet<u32>,
     sm6_minor: u32,
     hw_regs: BTreeSet<u32>,
@@ -1329,6 +1331,8 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
         uses_trans16: false,
         uses_trans32: false,
         uav_mips: BTreeSet::new(),
+        coherent_read: BTreeSet::new(),
+        uav_written: BTreeSet::new(),
         tex_mips: BTreeSet::new(),
         sm6_minor: 0,
         hw_regs: BTreeSet::new(),
@@ -3341,12 +3345,48 @@ impl<'a> Emitter<'a> {
         })
     }
 
+    fn coherent_key(slot: u32) -> u32 {
+        if slot & BINDLESS != 0 { BINDLESS } else { slot }
+    }
+
+    fn is_coherent(&self, slot: u32) -> bool {
+        let k = Self::coherent_key(slot);
+        self.coherent_read.contains(&k) && self.uav_written.contains(&k)
+    }
+
+    fn note_coherent(&mut self, idx: usize, ins: &Insn) {
+        let w = ins.raw.first().copied().unwrap_or(0);
+        let glc = match ins.enc {
+            Enc::Mubuf | Enc::Mtbuf => (w >> 14) & 3 != 0,
+            Enc::Mimg => (w >> 13) & 1 != 0 || (w >> 7) & 1 != 0,
+            _ => return,
+        };
+        let m = ins.mnemonic.as_str();
+        let writes = m.contains("store") || m.contains("_atomic");
+        if !writes && !glc {
+            return;
+        }
+        let slots: Vec<u32> = self
+            .res
+            .get(&idx)
+            .into_iter()
+            .flatten()
+            .filter_map(|r| match *r {
+                Res::Buf(slot, true) | Res::TBuf(slot, true) | Res::Uav(slot, _) => Some(Self::coherent_key(slot)),
+                _ => None,
+            })
+            .collect();
+        let set = if writes { &mut self.uav_written } else { &mut self.coherent_read };
+        set.extend(slots);
+    }
+
     fn emit_insn(&mut self, idx: usize, ins: &Insn, is_ps: bool, br: Option<usize>) -> Result<(), String> {
         let m = ins.mnemonic.as_str();
         let s = &ins.src;
         let d = ins.dst.first().cloned();
         self.line(&format!("// {:#06x} {m}", ins.offset));
         self.cur_idx = idx;
+        self.note_coherent(idx, ins);
         if let Some(&id) = self.epilog_pack.get(&idx) {
             // Export epilogue: keep the unpacked operands (see `find_export_epilogs`).
             for (k, sfx) in ["a", "b"].iter().enumerate() {
@@ -7473,7 +7513,11 @@ impl<'a> Emitter<'a> {
             h.push_str(&self.decl(&mut used, "SamplerComparisonState", &format!("scmp{slot}"), *slot, 's', 3, 16)?);
         }
         for (is_uav, slot) in self.sbuf.keys() {
-            let (ty, nm, reg) = if *is_uav { ("RWStructuredBuffer", "ubuf", 'u') } else { ("StructuredBuffer", "sbuf", 't') };
+            let (ty, nm, reg) = match (*is_uav, self.is_coherent(*slot)) {
+                (true, true) => ("globallycoherent RWStructuredBuffer", "ubuf", 'u'),
+                (true, false) => ("RWStructuredBuffer", "ubuf", 'u'),
+                _ => ("StructuredBuffer", "sbuf", 't'),
+            };
             let _ = writeln!(h, "struct TbElem_{nm}{slot} {{ uint w[{}]; }};
 ", self.sbuf_words((*is_uav, *slot)));
             h.push_str(&self.decl(&mut used, &format!("{ty}<TbElem_{nm}{slot}>"), &format!("{nm}{slot}"), *slot, reg, if *is_uav { 1 } else { 0 }, 32)?);
@@ -7484,8 +7528,9 @@ impl<'a> Emitter<'a> {
             }
         }
         for (is_uav, slot) in &self.tbuf {
+            let gc = if self.is_coherent(*slot) { "globallycoherent " } else { "" };
             let _ = if *is_uav && self.tbuf_uint.contains(slot) {
-                self.decl(&mut used, "RWBuffer<uint>", &format!("utb{slot}"), *slot, 'u', 1, 32).map(|d| h.push_str(&d))
+                self.decl(&mut used, &format!("{gc}RWBuffer<uint>"), &format!("utb{slot}"), *slot, 'u', 1, 32).map(|d| h.push_str(&d))
             } else {
                 let e = match self.tbuf_ty.get(&(*is_uav, *slot)) {
                     Some(2) => "int4",
@@ -7493,7 +7538,7 @@ impl<'a> Emitter<'a> {
                     None => "float4",
                 };
                 if *is_uav {
-                    self.decl(&mut used, &format!("RWBuffer<{e}>"), &format!("utb{slot}"), *slot, 'u', 1, 32).map(|d| h.push_str(&d))
+                    self.decl(&mut used, &format!("{gc}RWBuffer<{e}>"), &format!("utb{slot}"), *slot, 'u', 1, 32).map(|d| h.push_str(&d))
                 } else {
                     self.decl(&mut used, &format!("Buffer<{e}>"), &format!("stb{slot}"), *slot, 't', 0, 32).map(|d| h.push_str(&d))
                 }
@@ -7521,6 +7566,7 @@ impl<'a> Emitter<'a> {
                 5 => format!("RWTexture2DArray<{elem}>"),
                 _ => return Err(format!("UAV dim {dim} unsupported")),
             };
+            let ty = if self.is_coherent(*slot) { format!("globallycoherent {ty}") } else { ty };
             h.push_str(&self.decl(&mut used, &ty, &format!("uav{slot}"), *slot, 'u', 1, 32)?);
             if self.uav_mips.contains(slot) {
                 let _ = writeln!(h, "{ty} uav{slot}_m[16] : register(u{}, space{});", (slot & 0xffff) * 16, TB_MIP_SPACE + (slot >> 16));
