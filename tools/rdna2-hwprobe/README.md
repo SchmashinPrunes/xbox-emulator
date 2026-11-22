@@ -93,6 +93,39 @@ ld.lld-18 -shared /tmp/valu/k.o -o /tmp/valu/k.co
 python3 tools/rdna2-hwprobe/valu_probe.py show /tmp/valu
 ```
 
-Status: **not yet run on hardware.** The 33 kernels assemble with LLVM 18 and disassemble identically
-for gfx1036 and gfx1013. `show` was checked against simulated outputs for both answers to each
-question. No results are recorded here until someone runs it on an RDNA2 GPU.
+The 33 kernels assemble with LLVM 18 and disassemble identically for gfx1036 and gfx1013.
+
+### Results on gfx1036
+
+Measured by @SchmashinPrunes with the generator unmodified (commit `efffbc0`) on the gfx1036 iGPU of a
+Ryzen 5 9600X: Linux Mint, kernel 7.0.0-42, ROCm/HIP 5.7.1, clang / ld.lld 18.1.3. All 33 kernels ran
+and no kernel had outputs that differ between threads. Full `show` output and the fitting script for
+the NaN rules: https://github.com/omonkeyz/xbox-emulator/pull/41#issuecomment-7071178837
+
+This is RDNA2, not the console's gfx1013. Nothing here was measured on a console.
+
+- `fma16`: **fused.** VOP2 0x36 / 0x37 / 0x38 match hardware `v_fma_f16` on all 254,891 inputs that
+  separate the two models (three K values) and never match `v_mul_f16` + `v_add_f16`. Hardware
+  `v_fma_f16` matches the exact single-rounding model with 0 mismatches. The upper half of D is
+  preserved.
+- `sbfe`: **7-bit width, sign-fill**, 152 / 152 (literal ISA formula 114, width modulo the operand
+  size 100). A signed field that reaches the top bit sign-fills. Junk in the unused bits of S1 is
+  ignored, and so is offset bit 5 (32-bit forms) or bit 6 (64-bit forms). SCC = result != 0.
+- `norm`: **round to nearest**, 0 mismatches for all six instructions, NaN gives 0. Half-up
+  (`floor(x + 0.5)`) fails on the signed forms. The upper half of D is preserved by `v_cvt_norm_*`.
+- `nan`: the single candidate that `show` prints ("first NaN operand, quieted") does **not** fit. The
+  rules below were fitted by @SchmashinPrunes against the raw outputs and reproduce every NaN result
+  in both IEEE modes; `show` has not been updated to check them.
+  - Arithmetic (`v_fma_f32`, `v_fmac_f32`, `v_mul_f32`, `v_add_f32`, `v_sub_f32`), operand order
+    (a, b, c) or (src0, src1):
+    1. `v_sub_f32` negates src1 first, so a NaN in src1 comes out with its sign flipped.
+    2. fma / fmac: if neither a nor b is NaN and a * b is invalid (0 * inf), the result is the default
+       NaN even when c is a NaN.
+    3. Otherwise the result is the first NaN operand: unchanged in IEEE mode 0 (a signalling NaN stays
+       signalling), quieted (`| 0x400000`) in IEEE mode 1.
+    4. An invalid operation without a NaN input (0 * inf, inf - inf, the fma sum) returns `0xffc00000`
+       in both modes.
+  - `v_min_f32` / `v_max_f32`: in IEEE mode 0 a NaN operand is ignored when the other one is a number,
+    and two NaNs give src0 unchanged. In IEEE mode 1 a signalling NaN wins and is quieted (src0
+    first); otherwise a quiet NaN is ignored when the other operand is a number, and two quiet NaNs
+    give src0.
