@@ -29,6 +29,7 @@ mod rootmem;
 mod mesh;
 mod amp;
 mod global;
+mod scratch;
 mod centroid;
 mod durango;
 mod mixed;
@@ -608,6 +609,7 @@ struct Emitter<'a> {
     bl_srv: BTreeSet<u32>,
     uses_bvh: bool,
     uses_global: bool,
+    uses_scratch: bool,
     mode_use: mode::ModeUse,
     out_interp: InputInterp,
     user_data: bool,
@@ -1335,6 +1337,7 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
         bl_srv: BTreeSet::new(),
         uses_bvh: false,
         uses_global: false,
+        uses_scratch: false,
         mode_use: mode::ModeUse::default(),
         out_interp: out_interp.clone(),
         user_data,
@@ -4102,6 +4105,7 @@ impl<'a> Emitter<'a> {
             }
             Enc::Mubuf => self.emit_mubuf(idx, ins),
             Enc::Mtbuf => self.emit_mtbuf(idx, ins),
+            Enc::Flat if ins.aux.mask == 1 => self.emit_scratch(ins),
             Enc::Flat if global::routes(ins, &self.insns) => {
                 self.uses_global = true;
                 self.emit_global(ins)
@@ -7319,6 +7323,9 @@ impl<'a> Emitter<'a> {
         }
         if self.uses_global {
             h.push_str(&global::helpers());
+        }
+        if self.uses_scratch {
+            h.push_str(&scratch::helpers());
         }
         if self.uses_bvh {
             h.push_str(&BVH_HELPERS.replace("TB_GMEM_SPACE", &TB_GMEM_SPACE.to_string()));
