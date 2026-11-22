@@ -2,6 +2,16 @@ use super::addr::{coord_1b540, index_1c960, mode_1b440, reorder_1dd10};
 use super::dec::{chan_table, color_shift, kd, neighbor, shift_of, shr8, shl8, signfix, split};
 use super::{Dcc, Stop, R};
 
+fn put(wv: &mut u32, k: &mut u32, on: bool) {
+    let m = 1u32 << (*k & 31);
+    if on {
+        *wv |= m;
+    } else {
+        *wv &= !m;
+    }
+    *k += 1;
+}
+
 fn lmask(n: u32) -> u32 {
     if (n.wrapping_sub(1) as i32) < 0 {
         0
@@ -45,15 +55,6 @@ pub(crate) fn channel(d: &mut Dcc) -> R<()> {
                     r12 = lmask(cw + 1) & r9;
                 }
                 let mut wv = 0u32;
-                let mut put = |k: &mut u32, on: bool| {
-                    let m = 1u32 << (*k & 31);
-                    if on {
-                        wv |= m;
-                    } else {
-                        wv &= !m;
-                    }
-                    *k += 1;
-                };
                 let out = if (p as i32) < 8 {
                     let hi = (((r12 & 1) << 6 | (r8 & 1)) << 1) | eax << 2 | (edx & 1);
                     let mut k = 0u32;
@@ -65,10 +66,10 @@ pub(crate) fn channel(d: &mut Dcc) -> R<()> {
                     }
                     for (lvl, bitv) in [(1u32, 2u32), (2, 4), (3, 8), (4, 0x10)] {
                         if lvl > 1 && a > lvl {
-                            put(&mut k, edx & bitv != 0);
+                            put(&mut wv, &mut k, edx & bitv != 0);
                         }
                         if b > lvl {
-                            put(&mut k, r8 & bitv != 0);
+                            put(&mut wv, &mut k, r8 & bitv != 0);
                         }
                     }
                     hi << 8 | wv
@@ -89,27 +90,27 @@ pub(crate) fn channel(d: &mut Dcc) -> R<()> {
                         }
                     }
                     if p8 > 0 {
-                        put(&mut k, z & 1 != 0);
+                        put(&mut wv, &mut k, z & 1 != 0);
                     }
                     if b8 > 0 {
-                        put(&mut k, y & 1 != 0);
+                        put(&mut wv, &mut k, y & 1 != 0);
                     }
                     for (lvl, bitv) in [(1i32, 2u32), (2, 4)] {
                         if e8 > lvl {
-                            put(&mut k, x & bitv != 0);
+                            put(&mut wv, &mut k, x & bitv != 0);
                         }
                         if p8 > lvl {
-                            put(&mut k, z & bitv != 0);
+                            put(&mut wv, &mut k, z & bitv != 0);
                         }
                         if b8 > lvl {
-                            put(&mut k, y & bitv != 0);
+                            put(&mut wv, &mut k, y & bitv != 0);
                         }
                     }
                     if cw as i32 > 0 {
-                        put(&mut k, r12 & 1 != 0);
+                        put(&mut wv, &mut k, r12 & 1 != 0);
                     }
                     if cw as i32 > 1 {
-                        put(&mut k, r12 & 2 != 0);
+                        put(&mut wv, &mut k, r12 & 2 != 0);
                     }
                     if p as i32 <= 8 {
                         bz << 8 | wv
@@ -458,7 +459,12 @@ pub(crate) fn emit(d: &mut Dcc, first: u32, last: u32, size: u32) -> R<()> {
         s1(d, esi + 1, d.o[0x344 + 4 * su])?;
         esi += 2;
     }
-    for j in first..=last {
+    let mut home = [first, last, size];
+    let mut j = first;
+    loop {
+        if j >= 4 {
+            return Err(Stop::Undef("packer base loop walks past sector 3 after its stack arguments were overwritten"));
+        }
         let ju = j as usize;
         for i in 0..8u32 {
             let iu = i as usize;
@@ -474,15 +480,28 @@ pub(crate) fn emit(d: &mut Dcc, first: u32, last: u32, size: u32) -> R<()> {
                 if r9 == 0 {
                     return Err(Stop::Fault("packer sets bit -1 of its stack word (non-canonical address)"));
                 }
-                let tmp = 1u32 << ((r9 - 1) & 31);
+                let slot = (r9 - 1) >> 5;
+                let tmp = if slot == 0 { 1u32 << (r9 - 1) } else { 0 };
+                if slot & 1 == 0 && slot != 0 {
+                    let h = (slot / 2 - 1) as usize;
+                    home[h] |= 1 << ((r9 - 1) & 31);
+                }
                 let eax = if r9 > 7 { 0 } else { (bp as u32 >> r9) & lmask(8 - r9) };
                 let v = (eax.wrapping_shl(r9) & 0xff) | tmp;
                 s1(d, esi, v as u8)?;
             }
             esi += 1;
         }
+        j += 1;
+        if j > home[1] {
+            break;
+        }
     }
-    for j in first..=last {
+    let mut j = home[0];
+    loop {
+        if j >= 4 {
+            return Err(Stop::Undef("packer bit-plane loop walks past sector 3 after its stack arguments were overwritten"));
+        }
         let ju = j as usize;
         for i in 0..8u32 {
             let iu = i as usize;
@@ -505,13 +524,26 @@ pub(crate) fn emit(d: &mut Dcc, first: u32, last: u32, size: u32) -> R<()> {
                 n += 1;
             }
         }
+        j += 1;
+        if j > home[1] {
+            break;
+        }
     }
+    let size = home[2];
     key_encode(d, r11, r10, size)?;
     let mut rem = size;
-    for s in first..=last {
+    let mut s = home[0];
+    loop {
+        if s >= 8 {
+            return Err(Stop::Undef("packer size loop writes past the codec object after its stack arguments were overwritten"));
+        }
         let c = if rem < 0x40 { rem & 0xff } else { 0x40 };
         rem = rem.wrapping_sub(c);
         d.o[0x410 + s as usize] = c as u8;
+        s += 1;
+        if s > home[1] {
+            break;
+        }
     }
     Ok(())
 }

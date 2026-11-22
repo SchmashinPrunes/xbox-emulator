@@ -1,5 +1,5 @@
 use crate::client::*;
-use crate::tests::LIVE_LOCK;
+use crate::tests::{process_object, query, LIVE_LOCK};
 use crate::win::INVALID_HANDLE_VALUE;
 use crate::*;
 use core::ptr::null_mut;
@@ -185,19 +185,22 @@ fn wait_for<T>(what: &str, secs: u64, mut f: impl FnMut() -> Option<T>) -> T {
     }
 }
 
-unsafe fn query_text() -> String {
-    let req = xtfmsg::fixture::message_with_json("{}");
-    let reply = xtfmsg::fixture::end_message();
-    assert_eq!(crate::server::query_monitor_handler(0, req.get() as usize, reply.get() as usize), S_OK);
-    xtfmsg::fixture::end_json(reply.get()).unwrap_or_default()
+fn fields(json: &str) -> Vec<String> {
+    let mut v: Vec<String> = json.trim_matches(|c| c == '{' || c == '}').split(',').map(str::to_string).collect();
+    v.sort();
+    v
 }
 
-fn process_entry(q: &str, pid: u32) -> Option<String> {
-    let key = format!("{{\"ProcessId\":{pid},");
-    let i = q.find(&key)?;
-    let rest = &q[i..];
-    let end = rest.find("]}").map(|e| e + 2).unwrap_or(rest.len());
-    Some(rest[..end].to_string())
+struct ForceDetach(u32);
+
+impl Drop for ForceDetach {
+    fn drop(&mut self) {
+        unsafe {
+            let req = xtfmsg::fixture::message_with_json(&format!("{{\"ProcessId\":{},\"ForceAll\":1}}", self.0));
+            let reply = xtfmsg::fixture::end_message();
+            crate::server::detach_process_handler(0, req.get() as usize, reply.get() as usize);
+        }
+    }
 }
 
 #[test]
@@ -365,7 +368,8 @@ fn legacy_protocol_fallback_and_pump_errors_over_loopback() {
         assert_eq!(c.stop(55), S_OK);
         let seen = FALLBACK_SEEN.lock().unwrap().clone();
         assert_eq!(seen[0], (crate::server::OP_MONITOR_PROCESS, "{\"ProcessId\":55}".to_string()));
-        assert_eq!(seen[1], (crate::server::OP_DETACH_PROCESS, "{\"ProcessId\":55,\"ClientIdentifier\":7}".to_string()));
+        assert_eq!(seen[1].0, crate::server::OP_DETACH_PROCESS);
+        assert_eq!(fields(&seen[1].1), vec!["\"ClientIdentifier\":7".to_string(), "\"ProcessId\":55".to_string()]);
         drop(c);
         drop(d);
 
@@ -408,6 +412,7 @@ fn client_end_to_end_streams_debug_strings_from_spawned_child() {
         d.add_debug_monitor();
         let child = Child_::spawn("ods");
         let pid = child.pid();
+        let _detach = ForceDetach(pid);
         let (hr, c) = Client::create("127.0.0.1");
         assert_eq!(hr, S_OK);
         let cb = Callback::new(S_OK);
@@ -419,14 +424,14 @@ fn client_end_to_end_streams_debug_strings_from_spawned_child() {
             if s.iter().filter(|(_, t)| t.contains(CHILD_TICK)).count() >= 2 { Some(s) } else { None }
         });
         assert!(got.iter().all(|(p, _)| *p == pid));
-        let q = query_text();
-        let entry = process_entry(&q, pid).expect("debug monitor lists the child");
+        let q = query();
+        let entry = process_object(&q, pid).expect("debug monitor lists the child");
         assert!(entry.contains("\"IsActive\":1"), "{entry}");
         assert_eq!(c.stop(pid), S_OK);
         assert_eq!((*c.0).pump_thread, INVALID_HANDLE_VALUE);
         wait_for("worker exit after Stop", 20, || {
-            let q = query_text();
-            process_entry(&q, pid).filter(|e| e.contains("\"IsActive\":0")).map(|_| ())
+            let q = query();
+            process_object(&q, pid).filter(|e| e.contains("\"IsActive\":0")).map(|_| ())
         });
         assert!(child.0.id() == pid);
         let mut ch = child;
@@ -454,6 +459,7 @@ fn raw_session_monitor_process_reports_create_and_exit_of_spawned_child() {
         d.add_debug_monitor();
         let mut child = Child_::spawn("sleep");
         let pid = child.pid();
+        let _detach = ForceDetach(pid);
         let s = raw_open(RAW_TCP_PORT);
         let flags = crate::debugclient::FILTER_CREATE_PROCESS | crate::debugclient::FILTER_EXIT_PROCESS;
         let req = xtfmsg::fixture::message_with_json(&format!("{{\"ProcessId\":{pid},\"FilterFlags\":{flags}}}"));
@@ -487,6 +493,14 @@ fn raw_session_monitor_process_reports_create_and_exit_of_spawned_child() {
         assert_eq!(t, XBTP_MESSAGE_TYPE_MORE);
         assert!(exited.contains("\"EventCode\":5") && exited.contains(&format!("\"ProcessId\":{pid}")), "{exited}");
         let _ = child.0.wait();
+        let ctl = raw_open(RAW_TCP_PORT);
+        let dreq = xtfmsg::fixture::message_with_json(&format!("{{\"ProcessId\":{pid},\"ForceAll\":1}}"));
+        let mut dex = 0u32;
+        assert_eq!(com::client_session::send_begin_message(ctl.get(), crate::server::OP_DETACH_PROCESS, dreq.get(), &mut dex), S_OK);
+        let mut dst = 1u32;
+        let mut dreply = Com::null();
+        assert_eq!(com::client_session::receive_end_message(ctl.get(), 10000, dex, &mut dst, dreply.put()), S_OK);
+        assert_eq!(dst, 0);
         let mut tail = Vec::new();
         loop {
             let (t, st, text) = next("end of exchange");

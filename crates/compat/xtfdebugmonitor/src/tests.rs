@@ -227,12 +227,12 @@ fn ev(m: &str) -> Option<u32> {
     }
 }
 
-fn process_object(query: &str, pid: u32) -> Option<String> {
+pub(crate) fn process_object(query: &str, pid: u32) -> Option<String> {
     let Some(J::Arr(ps)) = parse(query).get("Processes").cloned() else { return None };
     ps.into_iter().find(|p| p.get("ProcessId") == Some(&J::Num(pid as f64))).map(|p| p.render())
 }
 
-unsafe fn query() -> String {
+pub(crate) unsafe fn query() -> String {
     let (hr, text) = call(query_monitor_handler, 0, None);
     assert_eq!(hr, S_OK, "{text}");
     text

@@ -1845,7 +1845,7 @@
 <rect x="875.00" y="880.00" width="125.00" height="60.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="880.00" y="896.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Amplification</text>
 </g>
-<text x="4.00" y="971.00" font-family="sans-serif" font-size="16" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Xbox console libraries: 95.32% (2058/2159)</text>
+<text x="4.00" y="971.00" font-family="sans-serif" font-size="16" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Xbox console libraries: 95.88% (2070/2159)</text>
 <rect x="4" y="982" width="10" height="10" fill="#2ea043"/>
 <text x="18.00" y="991.00" font-family="sans-serif" font-size="11" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">implemented</text>
 <rect x="109" y="982" width="10" height="10" fill="#388bfd"/>
@@ -1908,10 +1908,10 @@
 <rect x="0.00" y="998.00" width="299.68" height="421.48" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="5.00" y="1014.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">kernel32legacy</text>
 </g>
-<g><title>advapi32legacy.dll: 204/207 covered; Fortnite imports 1, Terraria imports 1, Trackmania imports 1, XDefiant imports 1</title>
-<rect x="1.00" y="1420.48" width="59.54" height="20.42" fill="#2ea043"/>
-<rect x="60.54" y="1420.48" width="19.85" height="20.42" fill="#91bffd"/>
-<rect x="80.38" y="1420.48" width="218.30" height="20.42" fill="#388bfd"/>
+<g><title>advapi32legacy.dll: 206/207 covered; Fortnite imports 1, Terraria imports 1, Trackmania imports 1, XDefiant imports 1</title>
+<rect x="1.00" y="1420.48" width="99.23" height="20.42" fill="#2ea043"/>
+<rect x="100.23" y="1420.48" width="19.85" height="20.42" fill="#91bffd"/>
+<rect x="120.07" y="1420.48" width="178.61" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1440.91" width="297.68" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1461.33" width="297.68" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1481.76" width="297.68" height="20.42" fill="#388bfd"/>
@@ -1924,8 +1924,7 @@
 <rect x="1.00" y="1624.73" width="297.68" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1645.15" width="297.68" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1665.58" width="297.68" height="20.42" fill="#388bfd"/>
-<rect x="1.00" y="1686.00" width="178.61" height="20.42" fill="#388bfd"/>
-<rect x="179.61" y="1686.00" width="39.69" height="20.42" fill="#e3b341"/>
+<rect x="1.00" y="1686.00" width="218.30" height="20.42" fill="#388bfd"/>
 <rect x="219.30" y="1686.00" width="19.85" height="20.42" fill="#d29922"/>
 <line x1="1.00" y1="1440.91" x2="298.68" y2="1440.91" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="1.00" y1="1461.33" x2="298.68" y2="1461.33" stroke="#0d1117" stroke-width="0.5"/>
@@ -2105,17 +2104,16 @@
 <rect x="299.68" y="1391.95" width="132.62" height="172.87" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="304.68" y="1407.95" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">d3d12_xs</text>
 </g>
-<g><title>d3d12_x.dll: 41/54 covered; Terraria imports 4, Trackmania imports 5</title>
-<rect x="300.68" y="1565.82" width="37.32" height="20.97" fill="#8cca97"/>
-<rect x="338.00" y="1565.82" width="93.30" height="20.97" fill="#2ea043"/>
+<g><title>d3d12_x.dll: 46/54 covered; Terraria imports 4, Trackmania imports 5</title>
+<rect x="300.68" y="1565.82" width="111.96" height="20.97" fill="#8cca97"/>
+<rect x="412.64" y="1565.82" width="18.66" height="20.97" fill="#2ea043"/>
 <rect x="300.68" y="1586.79" width="130.62" height="20.97" fill="#2ea043"/>
 <rect x="300.68" y="1607.76" width="130.62" height="20.97" fill="#2ea043"/>
 <rect x="300.68" y="1628.72" width="130.62" height="20.97" fill="#2ea043"/>
 <rect x="300.68" y="1649.69" width="130.62" height="20.97" fill="#2ea043"/>
-<rect x="300.68" y="1670.66" width="111.96" height="20.97" fill="#2ea043"/>
-<rect x="412.64" y="1670.66" width="18.66" height="20.97" fill="#efd596"/>
-<rect x="300.68" y="1691.62" width="55.98" height="20.97" fill="#efd596"/>
-<rect x="356.66" y="1691.62" width="55.98" height="20.97" fill="#e3b341"/>
+<rect x="300.68" y="1670.66" width="130.62" height="20.97" fill="#2ea043"/>
+<rect x="300.68" y="1691.62" width="74.64" height="20.97" fill="#2ea043"/>
+<rect x="375.32" y="1691.62" width="37.32" height="20.97" fill="#e3b341"/>
 <rect x="412.64" y="1691.62" width="18.66" height="20.97" fill="#d29922"/>
 <rect x="300.68" y="1712.59" width="93.30" height="20.97" fill="#d29922"/>
 <line x1="300.68" y1="1586.79" x2="431.30" y2="1586.79" stroke="#0d1117" stroke-width="0.5"/>
@@ -2193,14 +2191,14 @@
 <rect x="725.43" y="1203.36" width="141.00" height="112.35" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="730.43" y="1219.36" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">GDK XUser (QueryApi</text>
 </g>
-<g><title>xmem.dll: 35/36 covered; Fortnite imports 10, Minecraft imports 2, Terraria imports 5, Trackmania imports 8, XDefiant imports 4</title>
+<g><title>xmem.dll: 36/36 covered; Fortnite imports 10, Minecraft imports 2, Terraria imports 5, Trackmania imports 8, XDefiant imports 4</title>
 <rect x="867.42" y="1204.36" width="131.58" height="18.39" fill="#8cca97"/>
-<rect x="867.42" y="1222.75" width="56.39" height="18.39" fill="#8cca97"/>
-<rect x="923.81" y="1222.75" width="75.19" height="18.39" fill="#2ea043"/>
+<rect x="867.42" y="1222.75" width="75.19" height="18.39" fill="#8cca97"/>
+<rect x="942.61" y="1222.75" width="56.39" height="18.39" fill="#2ea043"/>
 <rect x="867.42" y="1241.14" width="131.58" height="18.39" fill="#2ea043"/>
 <rect x="867.42" y="1259.53" width="131.58" height="18.39" fill="#2ea043"/>
 <rect x="867.42" y="1277.92" width="131.58" height="18.39" fill="#2ea043"/>
-<rect x="867.42" y="1296.31" width="18.80" height="18.39" fill="#efd596"/>
+<rect x="867.42" y="1296.31" width="18.80" height="18.39" fill="#2ea043"/>
 <line x1="867.42" y1="1222.75" x2="999.00" y2="1222.75" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="867.42" y1="1241.14" x2="999.00" y2="1241.14" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="867.42" y1="1259.53" x2="999.00" y2="1259.53" stroke="#0d1117" stroke-width="0.5"/>
@@ -2597,12 +2595,10 @@
 <rect x="684.54" y="1779.39" width="56.23" height="59.30" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="689.54" y="1795.39" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">xfp_gc</text>
 </g>
-<g><title>xfrontpaneldisplay.dll: 4/8 covered; Terraria imports 6</title>
-<rect x="685.54" y="1839.70" width="36.16" height="19.10" fill="#8cca97"/>
-<rect x="721.70" y="1839.70" width="18.08" height="19.10" fill="#2ea043"/>
-<rect x="685.54" y="1858.80" width="18.08" height="19.10" fill="#2ea043"/>
-<rect x="703.62" y="1858.80" width="36.16" height="19.10" fill="#efd596"/>
-<rect x="685.54" y="1877.90" width="36.16" height="19.10" fill="#efd596"/>
+<g><title>xfrontpaneldisplay.dll: 8/8 covered; Terraria imports 6</title>
+<rect x="685.54" y="1839.70" width="54.23" height="19.10" fill="#8cca97"/>
+<rect x="685.54" y="1858.80" width="54.23" height="19.10" fill="#8cca97"/>
+<rect x="685.54" y="1877.90" width="36.16" height="19.10" fill="#2ea043"/>
 <line x1="685.54" y1="1858.80" x2="739.78" y2="1858.80" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="685.54" y1="1877.90" x2="739.78" y2="1877.90" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="684.54" y="1838.70" width="56.23" height="59.30" fill="none" stroke="#0d1117" stroke-width="2"/>

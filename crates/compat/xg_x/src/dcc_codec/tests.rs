@@ -136,7 +136,7 @@ pub(super) fn same_object(d: &Dcc, c: &Con, what: &str) {
     assert_eq!(cp != 0, dp != 0, "{what}: error pointer");
 }
 
-pub(super) fn ours(format: i32, tile: i32, params: [u32; 2]) -> (Dcc, i32) {
+pub(crate) fn ours(format: i32, tile: i32, params: [u32; 2]) -> (Dcc, i32) {
     let mut d = Dcc::new();
     let hr = d.setup(format, tile, params[0], params[1]);
     (d, hr)
@@ -146,7 +146,7 @@ pub(super) fn configs() -> Vec<(i32, i32, [u32; 2])> {
     let mut v = Vec::new();
     for format in 1..=0x78 {
         for tile in 0..=0x1a {
-            if crate::dcc::setup_ok(format, tile) {
+            if ours(format, tile, [0, 0]).1 == 0 {
                 v.push((format, tile, [0, 0]));
             }
         }
@@ -162,9 +162,6 @@ fn setup_matches_console_for_every_format_and_tile_mode() {
         or.hardware_version(&orc, v);
         for format in 1..=0x78 {
             for tile in -1..=0x1b {
-                if !crate::dcc::setup_ok(format, tile) && !(0..=0x1a).contains(&tile) {
-                    continue;
-                }
                 let params = [r.next() % 4, r.next() % 3];
                 let (c, chr) = Con::new(or, format, tile, params);
                 let (d, dhr) = ours(format, tile, params);
