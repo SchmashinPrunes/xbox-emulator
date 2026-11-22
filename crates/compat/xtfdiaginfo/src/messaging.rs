@@ -124,7 +124,10 @@ impl ErrorContext {
     }
 
     pub unsafe fn add_error(&mut self, hr: HRESULT, file: &str, line: u32) -> HRESULT {
-        let text = error_text(hr, file, line);
+        self.add_error_text(&error_text(hr, file, line))
+    }
+
+    pub unsafe fn add_error_text(&mut self, text: &[u16]) -> HRESULT {
         let s = Bstr(SysAllocString(text.as_ptr()));
         if s.0.is_null() {
             return E_OUTOFMEMORY;

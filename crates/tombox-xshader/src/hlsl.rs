@@ -4857,7 +4857,7 @@ impl<'a> Emitter<'a> {
                     Some("xyzw") => 4,
                     _ => 0,
                 };
-                if offen || ins.aux.imm != 0 || comps == 0 {
+                if offen || ins.aux.imm != 0 || comps == 0 || !matches!(ins.src[2], Opnd::ConstInt(0) | Opnd::Null) {
                     return Err("uint typed-buffer MUBUF form unsupported".into());
                 }
                 // Without IDXEN the access addresses element 0.
@@ -4960,9 +4960,14 @@ impl<'a> Emitter<'a> {
         // Address = element index (IDXEN: first address register) * stride + byte offset
         // (OFFEN: the next address register, or the first when there is no index) + imm.
         let (offen, idxen) = (ins.aux.mask & 1 != 0, ins.aux.mask & 2 != 0);
-        if !matches!(ins.src[2], Opnd::ConstInt(0)) {
-            return Err("MUBUF with a dynamic SOFFSET is unsupported".into());
-        }
+        let soff = match ins.src[2] {
+            Opnd::ConstInt(0) | Opnd::Null => None,
+            Opnd::Sgpr(_) | Opnd::M0 | Opnd::ConstInt(_) | Opnd::Literal(_) => {
+                self.touch(&ins.src[2]);
+                Some(r(&ins.src[2])?)
+            }
+            other => return Err(format!("MUBUF SOFFSET operand {other:?} is unsupported")),
+        };
         let sub: Option<(u32, bool, bool)> = match ins.mnemonic.as_str() {
             "buffer_load_ubyte" => Some((8, false, false)),
             "buffer_load_sbyte" => Some((8, true, false)),
@@ -4990,6 +4995,11 @@ impl<'a> Emitter<'a> {
                 self.touch(&a1);
                 Some(r(&a1)?)
             }
+        };
+        let voff = match (voff, soff) {
+            (v, None) => v,
+            (None, Some(s)) => Some(s),
+            (Some(v), Some(s)) => Some(format!("({v}) + ({s})")),
         };
         let w0 = ins.aux.imm as u32 / 4;
         let vd = match ins.dst[0] {

@@ -227,6 +227,7 @@ extern "system" {
     fn CloseHandle(h: usize) -> i32;
     fn OpenProcessToken(p: usize, a: u32, h: *mut usize) -> i32;
     fn GetCurrentProcess() -> usize;
+    fn GetLastError() -> u32;
 }
 
 fn open_xvcmgmt() -> usize {
@@ -356,7 +357,23 @@ fn xvcmgmt_queue_follows_the_driver() {
     let cancelled = pend(h, xvcmgmt::IOCTL_RECEIVE, lone, &mut got);
     assert_eq!(Call::new().run(h, xvcmgmt::IOCTL_CLOSE, &lone.to_le_bytes(), &mut []), 0);
     assert_eq!(cancelled.wait(5000), Some((xvcmgmt::STATUS_CANCELLED, 0)), "close cancels in-flight receives");
-    assert_eq!(Call::new().run(h, 0x150094, &[], &mut [0; 4]), xvcmgmt::STATUS_INVALID_DEVICE_REQUEST);
+    assert_eq!(Call::new().run(h, 0x150054, &[0; 8], &mut [0; 4]), xvcmgmt::STATUS_INVALID_DEVICE_REQUEST);
+    let q = create(h, xvcmgmt::HOST_VM, claims::launch_instance());
+    assert_eq!(pend(h, xvcmgmt::IOCTL_CONNECT, q, &mut []).wait(5000), Some((0, 0)));
+    let mut rb = [0u8; 8];
+    let mut rb2 = [0u8; 8];
+    let one = pend(h, xvcmgmt::IOCTL_RECEIVE, q, &mut rb);
+    let two = pend(h, xvcmgmt::IOCTL_RECEIVE, q, &mut rb2);
+    assert_eq!(unsafe { xvcmgmt::cancel_io_ex(h, one.io.as_ptr() as *mut core::ffi::c_void) }, 1);
+    assert_eq!(one.wait(5000), Some((xvcmgmt::STATUS_CANCELLED, 0)), "CancelIoEx cancels exactly that request");
+    assert_eq!(two.wait(50), None);
+    assert_eq!(unsafe { xvcmgmt::cancel_io_ex(h, one.io.as_ptr() as *mut core::ffi::c_void) }, 0, "nothing left to cancel: ERROR_NOT_FOUND");
+    let mut iosb = [9usize; 2];
+    assert_eq!(unsafe { xvcmgmt::nt_cancel_io_file(h, iosb.as_mut_ptr()) }, 0);
+    assert_eq!(iosb, [0, 0]);
+    assert_eq!(two.wait(5000), Some((xvcmgmt::STATUS_CANCELLED, 0)), "NtCancelIoFile cancels the calling thread's I/O on the file");
+    assert_eq!(unsafe { xvcmgmt::nt_cancel_io_file_ex(h, core::ptr::null_mut(), iosb.as_mut_ptr()) }, xvcmgmt::STATUS_NOT_FOUND);
+    Call::new().run(h, xvcmgmt::IOCTL_CLOSE, &q.to_le_bytes(), &mut []);
     let mut dup = 0usize;
     extern "system" {
         fn DuplicateHandle(sp: usize, sh: usize, tp: usize, th: *mut usize, access: u32, inherit: i32, opts: u32) -> i32;
@@ -399,4 +416,120 @@ fn launch_claim_is_merged_into_the_process_token_attributes() {
     assert_ne!(unsafe { OpenProcessToken(GetCurrentProcess(), 8, &mut other) }, 0);
     assert!(unsafe { claims::is_process_token(other) });
     unsafe { CloseHandle(other) };
+}
+
+#[test]
+fn gamecore_host_answers_each_request_with_the_exact_reply_length() {
+    use crate::gchost::{frame, on_bytes, opened, parse, forget, CHANNEL_OPEN, DISPLAY_MODE_1, DISPLAY_MODE_2, PROXY_APP};
+    let id = 0xFFFF_0001;
+    let key = 7u64.to_le_bytes();
+    let mut proxy = key.to_vec();
+    proxy.extend_from_slice(&[0x11; 0x1c]);
+    let mut wire = frame(0, CHANNEL_OPEN, &[0, 0, 0, 0, 1, 0]);
+    wire.extend(frame(6, DISPLAY_MODE_1, &key));
+    wire.extend(frame(8, DISPLAY_MODE_2, &key));
+    wire.extend(frame(8, PROXY_APP, &proxy));
+    wire.extend(frame(0x24, 0x0003_0007, &key));
+    assert_eq!(&wire[14..16], &[0, 0], "a 6-byte payload is followed by 2 pad bytes");
+    let (half, rest) = wire.split_at(17);
+    assert!(on_bytes(id, half).is_empty(), "a partial frame waits for more bytes");
+    let out = on_bytes(id, rest);
+    let (replies, used, _) = parse(&out, 0);
+    assert_eq!(used, out.len());
+    let got: Vec<(u32, usize)> = replies.iter().map(|(k, p)| (*k, p.len())).collect();
+    assert_eq!(got, vec![(DISPLAY_MODE_1, 0x14), (DISPLAY_MODE_2, 0x35), (PROXY_APP, 0x10)], "the unknown 0x30007 gets no reply");
+    assert!(replies.iter().all(|(_, p)| p[..8] == key), "every reply echoes the request key");
+    assert_eq!(&replies[2].1[8..0x10], &[0; 8], "S_OK and a zero result");
+    assert_eq!(&replies[1].1[0x11..0x14], &[0; 3]);
+    assert_eq!(opened(id), vec![1]);
+    assert_eq!(crate::gcreply::reply(DISPLAY_MODE_1, &[0; 9]), None, "a malformed request is not answered");
+    assert_eq!(crate::gcreply::reply(PROXY_APP, &key), None);
+    forget(id);
+    assert!(opened(id).is_empty());
+}
+
+#[test]
+fn xvcmgmt_system_codes_follow_the_driver_on_a_fresh_boot() {
+    use crate::xvcsys::*;
+    let h = open_xvcmgmt();
+    let mut c = Call::new();
+    let mut q = [0xAAu8; 8];
+    assert_eq!(c.run(h, IOCTL_MODE_SFR_COUNTER, &[], &mut q), 0);
+    assert_eq!(c.wait(0), Some((0, 8)));
+    assert_eq!(q, [0; 8], "SFR counter 0x27 starts clear: no tools/debug flags");
+    assert_eq!(Call::new().run(h, IOCTL_MODE_SFR_COUNTER, &[], &mut [0u8; 7]), xvcmgmt::STATUS_INVALID_PARAMETER);
+
+    let mut upd = Vec::new();
+    for (counter, op, value) in [(0x27u32, 0u32, 0x13u64), (0x27, 1, 0x11), (0x27, 2, 0x100)] {
+        upd.extend_from_slice(&counter.to_le_bytes());
+        upd.extend_from_slice(&op.to_le_bytes());
+        upd.extend_from_slice(&value.to_le_bytes());
+    }
+    assert_eq!(Call::new().run(h, IOCTL_SFR_UPDATE, &upd, &mut []), 0);
+    let mut g = [0u8; 8];
+    assert_eq!(Call::new().run(h, IOCTL_SFR_GET, &0x27u32.to_le_bytes(), &mut g), 0);
+    assert_eq!(u64::from_le_bytes(g), 0x111);
+    let mut bad = upd[..16].to_vec();
+    bad.extend_from_slice(&[0xff, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(Call::new().run(h, IOCTL_SFR_UPDATE, &bad, &mut []), xvcmgmt::STATUS_INVALID_PARAMETER, "counter 0x1ff is out of range");
+    assert_eq!(sfr(0x27), 0x13, "entries before the bad one are applied");
+    assert_eq!(Call::new().run(h, IOCTL_SFR_UPDATE, &[0u8; 8], &mut []), xvcmgmt::STATUS_INVALID_PARAMETER);
+    assert_eq!(Call::new().run(h, IOCTL_SFR_UPDATE, &[0u32.to_le_bytes(), 0u32.to_le_bytes()].concat(), &mut []), xvcmgmt::STATUS_INVALID_PARAMETER);
+    assert_eq!(Call::new().run(h, IOCTL_SFR_UPDATE, &upd[..16], &mut []), 0);
+    assert_eq!(Call::new().run(h, IOCTL_SFR_UPDATE, &[0x27, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], &mut []), 0);
+    assert_eq!(sfr(0x27), 0);
+
+    let mut a = [0xAAu8; 4];
+    assert_eq!(Call::new().run(h, IOCTL_AUDIO_FLAG, &[], &mut a), 0);
+    assert_eq!(a, [0; 4]);
+    assert_eq!(Call::new().run(h, IOCTL_POWER_STATE, &1u32.to_le_bytes(), &mut []), 0);
+    assert_eq!(power_state(), 1);
+    assert_eq!(Call::new().run(h, IOCTL_POWER_STATE, &0u32.to_le_bytes(), &mut []), 0);
+    assert_eq!(Call::new().run(h, IOCTL_PIX_STATE, &1u32.to_le_bytes(), &mut []), 0);
+    assert_eq!(pix_state(), 1);
+    assert_eq!(Call::new().run(h, IOCTL_PIX_STATE, &[1, 0], &mut []), xvcmgmt::STATUS_INVALID_PARAMETER);
+
+    let ev = unsafe { CreateEventW(core::ptr::null(), 0, 0, core::ptr::null()) };
+    let before = slot_count();
+    let mut slot = [0u8; 2];
+    let mut c = Call::new();
+    assert_eq!(c.run(h, IOCTL_SLOT_REGISTER, &(ev as u64).to_le_bytes(), &mut slot), 0);
+    assert_eq!(c.wait(0), Some((0, 2)));
+    let n = u16::from_le_bytes(slot);
+    assert!((1..32).contains(&n));
+    assert_eq!(slot_count(), before + 1);
+    assert_eq!(Call::new().run(h, IOCTL_SLOT_REGISTER, &0u64.to_le_bytes(), &mut [0u8; 2]), xvcmgmt::STATUS_INVALID_HANDLE);
+    assert_eq!(Call::new().run(h, IOCTL_SLOT_REGISTER, &(ev as u64).to_le_bytes(), &mut [0u8; 4]), xvcmgmt::STATUS_INVALID_PARAMETER);
+    let mut rec = [0xAAu8; 16];
+    let mut c = Call::new();
+    assert_eq!(c.run(h, IOCTL_SLOT_DEQUEUE, &n.to_le_bytes(), &mut rec), 0x8000_001Au32 as i32, "nothing pending: STATUS_NO_MORE_ENTRIES");
+    assert_eq!(c.wait(0), Some((0x8000_001Au32 as i32, 0)), "a warning still completes the IOSB");
+    assert_eq!(rec, [0; 16], "the record is zeroed first");
+    assert_eq!(Call::new().run(h, IOCTL_SLOT_DEQUEUE, &0x7fu16.to_le_bytes(), &mut rec), xvcmgmt::STATUS_INVALID_PARAMETER);
+    let mut ret = 0u32;
+    let ok = unsafe { xvcmgmt::device_io_control(h, IOCTL_SLOT_DEQUEUE, n.to_le_bytes().as_ptr(), 2, rec.as_mut_ptr(), 16, &mut ret, core::ptr::null_mut()) };
+    assert_eq!((ok, unsafe { GetLastError() }), (0, 259), "the client's drain loop stops on FALSE / ERROR_NO_MORE_ITEMS");
+    assert_eq!(unsafe { WaitForSingleObject(ev, 0) }, 0x102, "nothing signals the event without a host");
+    let mut un = [0u8; 16];
+    un[..8].copy_from_slice(&0x1000u64.to_le_bytes());
+    assert_eq!(Call::new().run(h, IOCTL_SLOT_UNMAP, &un, &mut []), xvcmgmt::STATUS_NOT_FOUND);
+    assert_eq!(Call::new().run(h, IOCTL_SLOT_UNREGISTER, &n.to_le_bytes(), &mut []), 0);
+    assert_eq!(slot_count(), before);
+    assert_eq!(Call::new().run(h, IOCTL_SLOT_UNREGISTER, &n.to_le_bytes(), &mut []), 0, "an unknown slot still succeeds");
+    unsafe { CloseHandle(ev) };
+
+    let part = [0u32.to_le_bytes(), 7u32.to_le_bytes(), 0u32.to_le_bytes()].concat();
+    assert_eq!(Call::new().run(h, IOCTL_PARTITION_INFO, &part, &mut [0u8; 0xc]), xvcmgmt::STATUS_NOT_FOUND);
+    assert_eq!(Call::new().run(h, IOCTL_PARTITION_INFO, &part[..8], &mut [0u8; 0xc]), xvcmgmt::STATUS_BUFFER_TOO_SMALL);
+    assert_eq!(Call::new().run(h, IOCTL_TRANSFER_MEMORY, &part, &mut [0u8; 0x28]), xvcmgmt::STATUS_NOT_FOUND);
+    let mut c = Call::new();
+    assert_eq!(c.run(h, IOCTL_TRANSFER_MEMORY, &part, &mut [0u8; 0xc]), 0x8000_0005u32 as i32);
+    assert_eq!(c.wait(0), Some((0x8000_0005u32 as i32, 4)));
+    let p1 = [0u32.to_le_bytes(), 1u32.to_le_bytes(), 0u32.to_le_bytes()].concat();
+    assert_eq!(Call::new().run(h, IOCTL_TRANSFER_MEMORY, &p1, &mut [0u8; 0x28]), 0xC000_00BBu32 as i32);
+    assert_eq!(Call::new().run(h, IOCTL_GAME_READY, &[], &mut []), 0);
+    for code in [0x150054u32, 0x15005c] {
+        assert_eq!(Call::new().run(h, code, &[0u8; 8], &mut []), xvcmgmt::STATUS_INVALID_DEVICE_REQUEST, "{code:#x} is unknown to this driver build");
+    }
+    unsafe { xvcmgmt::close_handle(h) };
 }

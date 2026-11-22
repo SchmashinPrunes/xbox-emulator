@@ -601,3 +601,42 @@ fn kernel32legacy_redirects_leave_loader_slots_to_routing_without_a_patch_fight(
         }
     }
 }
+
+unsafe fn loader_count(h: *mut c_void) -> u32 {
+    let nt = LoadLibraryW(w("ntdll.dll").as_ptr());
+    let find: unsafe extern "system" fn(*mut c_void, *mut usize) -> i32 = core::mem::transmute(GetProcAddress(nt, b"LdrFindEntryForAddress\0".as_ptr()));
+    let mut e = 0usize;
+    assert_eq!(find(h, &mut e), 0);
+    *((*((e + 0x98) as *const usize) + 0x18) as *const u32)
+}
+
+#[test]
+fn a_routed_load_takes_a_loader_reference_that_free_library_balances() {
+    setup();
+    let dir = built_dlls::ensure(&[("pixevt", "pixevt.dll")]);
+    let cur = std::env::var_os(routes::DIR_VAR).unwrap();
+    let mut all: Vec<PathBuf> = std::env::split_paths(&cur).collect();
+    if !all.contains(&dir) {
+        all.push(dir);
+    }
+    std::env::set_var(routes::DIR_VAR, std::env::join_paths(all).unwrap());
+    use compat_common::os_host::routes_rt;
+    extern "system" {
+        fn FreeLibrary(h: *mut c_void) -> i32;
+    }
+    unsafe {
+        let h = routes_rt::resolve_load("pixevt.dll", 0);
+        assert!(!h.is_null());
+        assert_eq!(h as usize, routes::loaded("pixevt"));
+        let base = loader_count(h);
+        assert!(base >= 2, "{base}");
+        let again = routes_rt::resolve_load("PIXEVT", 0);
+        assert_eq!(again, h);
+        assert_eq!(loader_count(h), base + 1);
+        assert!(FreeLibrary(again) != 0);
+        assert_eq!(loader_count(h), base);
+        assert!(FreeLibrary(h) != 0);
+        assert_eq!(loader_count(h), base - 1);
+        assert!(!GetProcAddress(h, b"PIXBeginCapture1\0".as_ptr()).is_null());
+    }
+}

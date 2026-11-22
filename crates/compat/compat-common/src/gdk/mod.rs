@@ -24,6 +24,7 @@ pub mod win;
 pub mod package;
 pub mod save;
 pub mod store;
+pub mod streaming;
 pub mod system;
 pub mod ui;
 pub mod user;
@@ -131,6 +132,7 @@ fn all_ifaces() -> Vec<Iface> {
     v.extend(capture::interfaces());
     v.extend(access::interfaces());
     v.extend(basic::interfaces());
+    v.extend(streaming::interfaces());
     v
 }
 

@@ -30,11 +30,11 @@
 30 SCMergeShaderPair implemented | native: 3 for a null compiler, else 0; the retail console body does nothing else
 31 SCSimpleCompileShader forwarded | forwarded to the console's own sc_dll.dll (TOMBOX_SC_CONSOLE, sc_dll_console.dll beside this DLL, or the title EmbeddedXvd dump); without it returns the console failure value
 32 SCSimpleDumpShader forwarded | forwarded to the console's own sc_dll.dll (TOMBOX_SC_CONSOLE, sc_dll_console.dll beside this DLL, or the title EmbeddedXvd dump); without it returns the console failure value
-33 SC_Assemble stub | fixed failure, no work done: native: the retail console body returns 0 (no assembler in retail sc_dll)
+33 SC_Assemble implemented | native: the retail console body is xor eax, eax; ret (returns 0, no assembler in retail sc_dll) in all four dumps (Fortnite 0x22d8, others 0x2650); console body reproduced exactly; oracle test tests/console_fixed.rs; same entry in the SCGetExportFunctions table slot 0xf0
 34 SC_AssembleHandle_Destroy implemented | native: the retail console body is a bare ret
-35 SC_AssembleHandle_GetShader stub | fixed failure, no work done: native: the retail console body returns false
+35 SC_AssembleHandle_GetShader implemented | native: the retail console body is xor al, al; ret (false) in all four dumps (Fortnite 0x22e4, others 0x2660); console body reproduced exactly; oracle test tests/console_fixed.rs; table slot 0xf8
 36 SC_CBUsageHandle_Destroy forwarded | forwarded to the console's own sc_dll.dll (TOMBOX_SC_CONSOLE, sc_dll_console.dll beside this DLL, or the title EmbeddedXvd dump); without it returns the console failure value
-37 SC_CompileShaderFromMetadata stub | fixed failure, no work done: native: the retail console body returns 4
+37 SC_CompileShaderFromMetadata implemented | native: the retail console body is mov eax, 4; ret (SC incompatible) in all four dumps (Fortnite 0x3298, others 0x3dd0); forwarding to the console DLL would run the same two instructions; console body reproduced exactly; oracle test tests/console_fixed.rs; table slot 0x150
 38 SC_CompressExtent forwarded | forwarded to the console's own sc_dll.dll (TOMBOX_SC_CONSOLE, sc_dll_console.dll beside this DLL, or the title EmbeddedXvd dump); without it returns the console failure value
 39 SC_CompressExtent_Destroy forwarded | forwarded to the console's own sc_dll.dll (TOMBOX_SC_CONSOLE, sc_dll_console.dll beside this DLL, or the title EmbeddedXvd dump); without it returns the console failure value
 40 SC_ConvertRootSignatureToSCInputs forwarded | forwarded to the console's own sc_dll.dll (TOMBOX_SC_CONSOLE, sc_dll_console.dll beside this DLL, or the title EmbeddedXvd dump); without it returns the console failure value

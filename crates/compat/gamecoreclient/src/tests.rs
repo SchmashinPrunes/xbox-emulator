@@ -144,6 +144,79 @@ unsafe fn create(factory: *mut c_void, out: &mut *mut c_void) -> i32 {
     vcall::<unsafe extern "system" fn(*mut c_void, *mut c_void, *const Guid, *mut *mut c_void) -> i32>(factory, 3)(factory, core::ptr::null_mut(), &IID_IUNKNOWN, out)
 }
 
+const IID_DISPLAY_MODE: Guid = Guid { data1: 0x9E345409, data2: 0x2CF2, data3: 0x4DD1, data4: [0x8F, 0xCA, 0x2F, 0x96, 0xCE, 0x75, 0x81, 0xC0] };
+const IID_APP_MQ: Guid = Guid { data1: 0xAF7F45CF, data2: 0x0C68, data3: 0x46DE, data4: [0xAF, 0xED, 0x25, 0x2B, 0xBF, 0xF0, 0xC9, 0xC4] };
+
+unsafe fn query(obj: *mut c_void, iid: &Guid) -> Option<*mut c_void> {
+    let mut out = core::ptr::null_mut();
+    let hr = vcall::<unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> i32>(obj, 0)(obj, iid, &mut out);
+    (hr == S_OK && !out.is_null()).then_some(out)
+}
+
+unsafe fn host_requests(obj: *mut c_void, conn: u64) -> Vec<u32> {
+    let (Some(dm), Some(app)) = (query(obj, &IID_DISPLAY_MODE), query(obj, &IID_APP_MQ)) else {
+        return Vec::new();
+    };
+    let found = [(dm, 3usize), (dm, 4), (app, 3)];
+    let call = |i: usize| -> (*mut c_void, usize) { found[i] };
+    let d = console_sandbox::gcreply::display();
+    let mut kinds = Vec::new();
+    let take = |kinds: &mut Vec<u32>| {
+        let raw = console_sandbox::xvcmgmt::host_take_received(conn);
+        let (msgs, used, _) = console_sandbox::gchost::parse(&raw, 0);
+        assert_eq!(used, raw.len(), "one whole request frame reached the host");
+        let (last, opens) = msgs.split_last().expect("a request reached the host");
+        for (k, p) in opens {
+            assert_eq!(*k, console_sandbox::gchost::CHANNEL_OPEN, "{msgs:x?}");
+            assert_eq!(p.len(), 6);
+        }
+        kinds.extend(msgs.iter().map(|m| m.0));
+        last.1.clone()
+    };
+
+    let mut caps = [0u32; 6];
+    let (o, slot) = call(0);
+    let hr = vcall::<unsafe extern "system" fn(*mut c_void, *mut u32) -> i32>(o, slot)(o, caps.as_mut_ptr());
+    assert_eq!(hr, S_OK, "DisplayMode sub 1 reply consumed");
+    let req = take(&mut kinds);
+    assert_eq!(req.len(), 8);
+    let want = console_sandbox::gcreply::display_mode_1(&req, &d);
+    let flags = u32::from_le_bytes(want[0x10..0x14].try_into().unwrap());
+    assert_eq!(&caps[..4], &[flags & 1, (flags >> 1) & 1, (flags >> 2) & 1, (flags >> 3) & 1]);
+    assert_eq!(caps[4].to_le_bytes(), want[8..12]);
+    assert_eq!(caps[5].to_le_bytes(), want[12..16]);
+
+    let mut mode = [0u32; 12];
+    let (o, slot) = call(1);
+    let hr = vcall::<unsafe extern "system" fn(*mut c_void, *mut u32) -> i32>(o, slot)(o, mode.as_mut_ptr());
+    assert_eq!(hr, S_OK, "DisplayMode sub 2 record consumed exactly");
+    let req = take(&mut kinds);
+    assert_eq!(req.len(), 8);
+    let want = console_sandbox::gcreply::display_mode_2(&req, &d);
+    let u = |o: usize| u32::from_le_bytes(want[o..o + 4].try_into().unwrap());
+    let mut expect = vec![u(8), u(0xc), want[0x10] as u32];
+    expect.extend((0..8).map(|i| u(0x14 + 4 * i)));
+    expect.push(want[0x34] as u32);
+    assert_eq!(&mode[..], &expect[..]);
+
+    let id = Guid { data1: 0x1111_2222, data2: 3, data3: 4, data4: [5, 6, 7, 8, 9, 10, 11, 12] };
+    let mut out = 0xDEAD_BEEFu32;
+    let (o, slot) = call(2);
+    let hr = vcall::<unsafe extern "system" fn(*mut c_void, *const Guid, u8, u8, u16, u64, *mut u32) -> i32>(o, slot)(o, &id, 1, 2, 3, 4, &mut out);
+    assert_eq!(hr, S_OK, "GameCoreProxyApp reply consumed with S_OK");
+    let req = take(&mut kinds);
+    assert_eq!(req.len(), console_sandbox::gcreply::PROXY_REQUEST_LEN);
+    let want = console_sandbox::gcreply::proxy_app(&req);
+    assert_eq!(out.to_le_bytes(), want[0xc..0x10]);
+    assert_eq!(u64::from_le_bytes(req[8..16].try_into().unwrap()), 4);
+    assert_eq!(&req[0x10..0x14], &0x1111_2222u32.to_le_bytes());
+    assert_eq!(&req[0x20..0x24], &[3, 0, 1, 2]);
+    assert_eq!(console_sandbox::gchost::opened(conn), vec![1, 0xf], "DisplayMode opens class 1 and AppMQ class 0xf before their first request");
+    release(dm);
+    release(app);
+    kinds
+}
+
 #[test]
 fn class_objects_run_every_console_dump_under_the_sandbox() {
     let mut cases = consoles();
@@ -157,6 +230,10 @@ fn class_objects_run_every_console_dump_under_the_sandbox() {
         let out = std::process::Command::new(&exe).args(["--exact", "tests::inner_class_oracle", "--nocapture", "--test-threads=1"]).env(CASE, &c).output().unwrap();
         let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
         assert!(out.status.success() && text.contains("ORACLE OK"), "case {c}:\n{text}");
+        if c != "auto" {
+            let want = if c.contains("Fortnite") { "HOST REQUESTS []" } else { "HOST REQUESTS [5, 65543, 131079, 5, 6553663]" };
+            assert!(text.contains(want), "case {c} must issue {want}:\n{text}");
+        }
     }
 }
 
@@ -213,6 +290,8 @@ fn inner_class_oracle() {
     let conns = console_sandbox::xvcmgmt::host_connections(li);
     assert_eq!(conns.len(), 1, "the console queue client connected to the emulated host on {{c12a416b, XBOX://LI}}");
     assert!(console_sandbox::xvcmgmt::host_take_received(conns[0]).is_empty(), "construction sends nothing to the host");
+    let issued = unsafe { host_requests(obj2, conns[0]) };
+    println!("HOST REQUESTS {issued:?}");
     unsafe {
         release(obj2);
         release(f1);

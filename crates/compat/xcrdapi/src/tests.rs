@@ -476,3 +476,39 @@ fn staging_buffer_locked_while_objects_live() {
         release(q);
     }
 }
+
+#[path = "../../console-dll/oracle/leaf.rs"]
+mod leaf;
+
+#[test]
+fn fixed_result_exports_match_every_console_xcrdapi() {
+    type F = unsafe extern "system" fn(usize, usize, usize, usize) -> i32;
+    let ours: [(&str, extern "system" fn() -> i32, u32); 7] = [
+        ("XCrdQueryEncryptedInfo", crate::xcrd_a::XCrdQueryEncryptedInfo, 0x8007_0032),
+        ("XCrdQueryUnlockInfo", crate::xcrd_a::XCrdQueryUnlockInfo, 0x8007_0032),
+        ("XCrdRepairFiles", crate::xcrd_a::XCrdRepairFiles, 0x8007_0032),
+        ("XCrdTrimDeallocatedClusters", crate::xcrd2_storage::XCrdTrimDeallocatedClusters, 0x8007_0032),
+        ("XCrdShuffle", crate::xcrd2_storage::XCrdShuffle, 0x8000_4001),
+        ("XCrdWaitForAllRemovableDiskRemoval", crate::xcrd2_storage::XCrdWaitForAllRemovableDiskRemoval, 0x8000_4001),
+        ("XCrdWaitForAnyRemovableDiskArrival", crate::xcrd2_storage::XCrdWaitForAnyRemovableDiskArrival, 0x8000_4001),
+    ];
+    let images = leaf::images("xcrdapi.dll");
+    assert!(images.len() >= 3, "{} console xcrdapi.dll dumps", images.len());
+    let mut seen = std::collections::HashMap::new();
+    for img in &images {
+        for (name, f, want) in ours {
+            let (mine, mine_le) = leaf::with_sentinel(|| f());
+            assert_eq!((mine as u32, mine_le), (want, leaf::SENTINEL), "{name}");
+            let Some(p) = leaf::try_export(img, name) else { continue };
+            let console: F = unsafe { core::mem::transmute(p) };
+            for a in [[0usize; 4], [1, 0x1000, usize::MAX, 0xdead_beef]] {
+                let (theirs, their_le) = leaf::with_sentinel(|| unsafe { console(a[0], a[1], a[2], a[3]) });
+                assert_eq!((theirs, their_le), (mine, mine_le), "{name} vs {}", img.source.display());
+            }
+            *seen.entry(name).or_insert(0) += 1;
+        }
+    }
+    for (name, _, _) in ours {
+        assert!(seen.get(name).copied().unwrap_or(0) >= 3, "{name} compared against {:?} console dumps", seen.get(name));
+    }
+}

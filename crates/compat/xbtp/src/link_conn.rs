@@ -161,6 +161,9 @@ unsafe extern "C" fn link_connection_event(this: *mut c_void, out: *mut HANDLE) 
 
 unsafe extern "C" fn link_channel_dtor(ch: *mut XbtpChannel, flags: u32) -> *mut XbtpChannel {
     let h = (*ch).handle as *mut u8;
+    if (*ch).pending != 0 {
+        crate::xbtp2_sys::channel_cancel_request(&mut (*ch).request, || {});
+    }
     if !h.is_null() {
         XbtpLinkShutdownHandle(h);
     }

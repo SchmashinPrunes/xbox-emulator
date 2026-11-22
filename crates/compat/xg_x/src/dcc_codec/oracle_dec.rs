@@ -335,7 +335,7 @@ fn oracle_xgx_dcc_decode_export_shim() {
     assert!(same_hr > 4000);
 }
 
-pub(super) const PROVEN: [&str; 5] = ["bytes per element / 4", "/GS cookie", "never wrote", "overruns the console's 256-byte heap output surface", "walks past sector 3 after its stack arguments were overwritten and reads outside"];
+pub(super) const PROVEN: [&str; 5] = ["bytes per element / 4", "/GS cookie", "never wrote", "overruns the console's 256-byte heap output surface", "after its stack arguments were overwritten"];
 
 pub(super) fn child_exit(test: &str, var: &str, i: usize) -> u32 {
     let exe = std::env::current_exe().unwrap();

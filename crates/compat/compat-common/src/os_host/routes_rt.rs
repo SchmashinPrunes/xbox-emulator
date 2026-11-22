@@ -385,6 +385,17 @@ pub unsafe fn load_override(name: &str, flags: u32) -> Option<*mut c_void> {
     if h == 0 {
         return None;
     }
+    let add_ref = pc().first[F_GMXW];
+    if add_ref == 0 {
+        return None;
+    }
+    let e = GetLastError();
+    let mut held: *mut c_void = core::ptr::null_mut();
+    if core::mem::transmute::<usize, HandleExW>(add_ref)(FROM_ADDRESS, h as *const u16, &mut held) == 0 || held as usize != h {
+        SetLastError(e);
+        return None;
+    }
+    SetLastError(e);
     record(h as *mut c_void, name);
     Some(h as *mut c_void)
 }

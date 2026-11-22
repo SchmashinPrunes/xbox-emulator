@@ -8,6 +8,9 @@ use crate::process;
 use crate::sys::*;
 use crate::system;
 use crate::titles;
+use crate::titlememory;
+use crate::processdelta;
+use crate::xmemi::{self, XMem, XMemBasicInformation};
 use crate::OperationFn;
 use core::ffi::c_void;
 use core::mem::transmute;
@@ -24,6 +27,7 @@ pub(crate) fn test_imports() -> Result<Imports, HRESULT> {
             get_json_object: transmute(xbtp::xbtp2_json::XbtpGetJsonObject as *const () as usize),
             get_json_object_from_utf8: transmute(xbtp::xbtp2_json::XbtpGetJsonObjectFromUtf8 as *const () as usize),
             create_extension_metadata: transmute(xbtp::xbtp2_ext::XbtpCreateExtensionMetadata as *const () as usize),
+            create_message: transmute(xbtp::xbtp2_ext::XbtpCreateMessage as *const () as usize),
             has_system_gone_dark: transmute(xbtp::xbtp2_sys::XbtpHasSystemGoneDark as *const () as usize),
             set_system_go_dark: transmute(xbtp::xbtp2_sys::XbtpSetSystemGoDark as *const () as usize),
             log_info_v: transmute(xbtp::base::LogInfoV as *const () as usize),
@@ -722,7 +726,7 @@ fn entry_point_validates_guids_and_registers_handlers() {
         let count: unsafe extern "system" fn(Obj, *mut u32) -> HRESULT = transmute(slot(out, 3));
         let mut n = 0u32;
         assert_eq!(count(out, &mut n), S_OK);
-        assert_eq!(n, 11);
+        assert_eq!(n, IMPLEMENTED_HANDLERS.len() as u32);
         release(out);
         let mut pos = 0;
         for (id, _) in IMPLEMENTED_HANDLERS.iter() {
@@ -856,6 +860,358 @@ fn operation_request_monitor_serves_pipe() {
         let t = pipe_round_trip(&name, "{\"version\":3,\"opid\":3}");
         assert_eq!(num(&parse(&t), "opresult"), Some(HR_NOT_SUPPORTED as f64));
         assert_eq!(*PIPE_SERVICE.calls.lock().unwrap(), vec![(3, Some(9.0))]);
+    }
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct PcMbi {
+    base: u64,
+    alloc_base: u64,
+    alloc_protect: u32,
+    partition: u16,
+    pad: u16,
+    region_size: u64,
+    state: u32,
+    protect: u32,
+    kind: u32,
+    pad2: u32,
+}
+
+#[link(name = "kernel32")]
+extern "system" {
+    fn VirtualQueryEx(h: HANDLE, a: *const c_void, m: *mut PcMbi, n: usize) -> usize;
+}
+
+unsafe extern "system" fn fx_virtual_query(h: HANDLE, a: *const c_void, out: *mut XMemBasicInformation) -> i32 {
+    if out.is_null() {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+    let mut m = PcMbi::default();
+    if VirtualQueryEx(h, a, &mut m, core::mem::size_of::<PcMbi>()) == 0 {
+        return 0;
+    }
+    *out = XMemBasicInformation { base: m.base, alloc_base: m.alloc_base, alloc_protect: m.alloc_protect, region_size: m.region_size, state: m.state, protect: m.protect, kind: m.kind, xmem_flags: if m.partition == 0 { 1 } else { 0 }, ..Default::default() };
+    1
+}
+
+static WS_FLAGS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+static WS_FAIL: AtomicU32 = AtomicU32::new(0);
+
+unsafe extern "system" fn fx_working_set(flags: u32, out: *mut c_void) -> i32 {
+    WS_FLAGS.lock().unwrap_or_else(|e| e.into_inner()).push(flags);
+    let e = WS_FAIL.load(Ordering::Acquire);
+    if e != 0 {
+        SetLastError(e);
+        return 0;
+    }
+    let o = out as *mut u8;
+    core::ptr::write_unaligned(o as *mut u64, 0x3_6000_0000);
+    core::ptr::write_unaligned(o.add(8) as *mut u64, 0x1_2345_6789);
+    core::ptr::write_unaligned(o.add(0x10) as *mut u64, 0x8000_0000);
+    core::ptr::write_unaligned(o.add(0x18) as *mut u64, 0x1000);
+    core::ptr::write_unaligned(o.add(0x20) as *mut u32, 0x4_0000);
+    1
+}
+
+pub(crate) fn test_xmem() -> XMem {
+    XMem { virtual_query: fx_virtual_query, get_working_set_statistics: fx_working_set }
+}
+
+static TITLEMEM_LOCK: Mutex<()> = Mutex::new(());
+
+unsafe fn u64_field(o: &Ptr, k: &str) -> Option<u64> {
+    let c = child(o, k)?;
+    let l = num(&c, "L")? as u64;
+    let h = num(&c, "H")? as i64 as u64;
+    Some((h << 32) | l)
+}
+
+unsafe fn json_array(o: &Ptr, k: &str) -> Option<(Ptr, u32)> {
+    let mut a = Ptr::null();
+    let f: unsafe extern "system" fn(Obj, *const u16, *mut Obj) -> HRESULT = transmute(slot(o.0, 10));
+    if f(o.0, wz(k).as_ptr(), a.out()) != S_OK {
+        return None;
+    }
+    let size: unsafe extern "system" fn(Obj, *mut u32) -> HRESULT = transmute(slot(a.0, 11));
+    let mut n = 0u32;
+    assert_eq!(size(a.0, &mut n), S_OK);
+    Some((a, n))
+}
+
+unsafe fn array_items(o: &Ptr, k: &str) -> Vec<Ptr> {
+    let Some((a, n)) = json_array(o, k) else { return Vec::new() };
+    let get: unsafe extern "system" fn(Obj, u32, *mut Obj) -> HRESULT = transmute(slot(a.0, 9));
+    (0..n)
+        .map(|i| {
+            let mut e = Ptr::null();
+            assert_eq!(get(a.0, i, e.out()), S_OK);
+            e
+        })
+        .collect()
+}
+
+unsafe fn array_strings(o: &Ptr, k: &str) -> Vec<String> {
+    let Some((a, n)) = json_array(o, k) else { return Vec::new() };
+    let get: unsafe extern "system" fn(Obj, u32, *mut BSTR) -> HRESULT = transmute(slot(a.0, 8));
+    (0..n)
+        .map(|i| {
+            let mut e = Bstr::null();
+            assert_eq!(get(a.0, i, e.out()), S_OK);
+            String::from_utf16(e.as_slice()).unwrap()
+        })
+        .collect()
+}
+
+#[test]
+fn title_memory_u64_property_is_low_high_object() {
+    unsafe {
+        let o = parse("{}");
+        assert_eq!(titlememory::set_u64(o.0, &wz("X"), 0xffff_ffff_0000_0005), S_OK);
+        let c = child(&o, "X").unwrap();
+        assert_eq!(num(&c, "L"), Some(5.0));
+        assert_eq!(num(&c, "H"), Some(-1.0));
+        assert_eq!(titlememory::set_u64(null_mut(), &wz("X"), 1), E_INVALIDARG);
+    }
+}
+
+#[test]
+fn title_memory_report_for_own_process() {
+    let _g = TITLEMEM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe {
+        WS_FAIL.store(0, Ordering::Release);
+        WS_FLAGS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        let pid = GetCurrentProcessId();
+        let probe = Box::new(0u64);
+        let here = &*probe as *const u64 as u64;
+        let (hr, t) = call(titlememory::title_memory_report_handler, Some(&format!("{{\"ProcessId\":{}}}", pid)));
+        assert_eq!(hr, S_OK, "{}", t);
+        let r = parse(&t);
+        let procs = array_items(&r, "ProcessReports");
+        assert_eq!(procs.len(), 1, "{}", t);
+        assert_eq!(num(&procs[0], "ProcessId"), Some(pid as f64));
+        assert!(text(&procs[0], "ProcessName").unwrap().to_ascii_lowercase().ends_with(".exe"));
+        let regions = array_items(&procs[0], "RXF");
+        assert!(!regions.is_empty());
+        for v in regions.iter() {
+            assert_eq!(num(v, "RST"), Some(0x1000 as f64));
+            assert!(u64_field(v, "RSZ").unwrap() > 0);
+            assert!(num(v, "RP").is_some() && num(v, "RT").is_some());
+            assert!(u64_field(v, "RXF").is_some());
+        }
+        assert!(regions.iter().any(|v| {
+            let b = u64_field(v, "RBA").unwrap();
+            b <= here && here < b + u64_field(v, "RSZ").unwrap()
+        }));
+        assert_eq!(num(&r, "TotalVA"), Some(regions.len() as f64));
+        assert_eq!(*WS_FLAGS.lock().unwrap_or_else(|e| e.into_inner()), vec![titlememory::WS_FLAGS_WITH_VA]);
+        let p = child(&r, "PartitionReport").unwrap();
+        assert_eq!(u64_field(&p, "GL"), Some(0x3_6000_0000));
+        assert_eq!(u64_field(&p, "GU"), Some(0x1_2345_6789));
+        assert_eq!(num(&p, "GS"), Some(0x4_0000 as f64));
+        assert_eq!(u64_field(&p, "TL"), Some(0x8000_0000));
+        assert_eq!(u64_field(&p, "TU"), Some(0x1000));
+        assert_eq!(u64_field(&p, "SR"), Some(0));
+        let e = child(&r, "XtfOperationError").unwrap();
+        assert_eq!(num(&e, "ReturnCode"), Some(0.0));
+        drop(probe);
+    }
+}
+
+#[test]
+fn title_memory_report_skips_low_pids_and_non_titles() {
+    let _g = TITLEMEM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe {
+        WS_FAIL.store(0, Ordering::Release);
+        WS_FLAGS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        let (hr, t) = call(titlememory::title_memory_report_handler, Some("{\"ProcessId\":4}"));
+        assert_eq!(hr, S_OK);
+        let r = parse(&t);
+        assert!(array_items(&r, "ProcessReports").is_empty());
+        assert_eq!(num(&r, "TotalVA"), Some(0.0));
+        assert_eq!(*WS_FLAGS.lock().unwrap_or_else(|e| e.into_inner()), vec![titlememory::WS_FLAGS_NO_VA]);
+        let mut sleeper = spawn_sleeper();
+        let other = sleeper.id();
+        let (hr, t) = call(titlememory::title_memory_report_handler, Some(&format!("{{\"ProcessId\":{}}}", other)));
+        let _ = sleeper.kill();
+        assert_eq!(hr, S_OK);
+        let r = parse(&t);
+        assert!(array_items(&r, "ProcessReports").is_empty());
+        let e = child(&r, "XtfOperationError").unwrap();
+        assert_eq!(array_strings(&e, "Errors"), vec![format!("Failed (80070057) to query memory for process {}", other)]);
+    }
+}
+
+#[test]
+fn title_memory_report_all_processes_lists_only_titles() {
+    let _g = TITLEMEM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe {
+        WS_FAIL.store(0, Ordering::Release);
+        let mut ids = Vec::new();
+        let mut n = 0u32;
+        assert_eq!(titlememory::get_all_process_ids(&mut ids, &mut n), S_OK);
+        let ids = ids[..n as usize].to_vec();
+        assert!(ids.contains(&GetCurrentProcessId()));
+        assert!(ids.iter().all(|p| titles::is_title_process(*p)));
+        let (hr, t) = call(titlememory::title_memory_report_handler, None);
+        assert_eq!(hr, S_OK);
+        let r = parse(&t);
+        let procs = array_items(&r, "ProcessReports");
+        assert!(procs.iter().any(|p| num(p, "ProcessId") == Some(GetCurrentProcessId() as f64)));
+        assert!(procs.iter().all(|p| titles::is_title_process(num(p, "ProcessId").unwrap() as u32)));
+    }
+}
+
+#[test]
+fn title_memory_report_working_set_failure_is_returned_in_operation_error() {
+    let _g = TITLEMEM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe {
+        WS_FAIL.store(5, Ordering::Release);
+        let (hr, t) = call(titlememory::title_memory_report_handler, Some("{\"ProcessId\":4}"));
+        WS_FAIL.store(0, Ordering::Release);
+        assert_eq!(hr, S_OK);
+        let r = parse(&t);
+        assert!(child(&r, "PartitionReport").is_none());
+        let e = child(&r, "XtfOperationError").unwrap();
+        assert_eq!(num(&e, "ReturnCode"), Some(0x8007_0005u32 as i32 as f64));
+    }
+}
+
+#[test]
+fn xmem_fixture_resolves() {
+    assert!(xmemi::get().is_ok());
+}
+
+#[repr(C)]
+struct MockSession {
+    vtbl: *const MsVtbl,
+    sent: Mutex<Vec<String>>,
+    accept: u32,
+    child: Mutex<Option<Child>>,
+}
+
+unsafe extern "system" fn ms_qi(this: Obj, _iid: *const GUID, out: *mut Obj) -> HRESULT {
+    *out = this;
+    S_OK
+}
+
+unsafe extern "system" fn ms_ref(_this: Obj) -> u32 {
+    1
+}
+
+unsafe extern "system" fn ms_send_more(this: Obj, msg: Obj) -> HRESULT {
+    let s = &*(this as *const MockSession);
+    let mut n = 0u32;
+    let mut p: *mut u8 = null_mut();
+    assert_eq!(msg_get_json_body(msg, &mut n, &mut p), S_OK);
+    let text = String::from_utf8(core::slice::from_raw_parts(p, n as usize).iter().copied().take_while(|c| *c != 0).collect()).unwrap();
+    let mut sent = s.sent.lock().unwrap_or_else(|e| e.into_inner());
+    sent.push(text);
+    if sent.len() == 1 {
+        if let Some(c) = s.child.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+    }
+    if (sent.len() as u32) <= s.accept {
+        S_OK
+    } else {
+        0x8C11_0303u32 as i32
+    }
+}
+
+#[repr(C)]
+struct MsVtbl {
+    qi: unsafe extern "system" fn(Obj, *const GUID, *mut Obj) -> HRESULT,
+    add_ref: unsafe extern "system" fn(Obj) -> u32,
+    release: unsafe extern "system" fn(Obj) -> u32,
+    send_more: unsafe extern "system" fn(Obj, Obj) -> HRESULT,
+}
+
+static MS_VTBL: MsVtbl = MsVtbl { qi: ms_qi, add_ref: ms_ref, release: ms_ref, send_more: ms_send_more };
+
+unsafe fn entry_for(list: &[Ptr], pid: u32) -> Option<&Ptr> {
+    list.iter().find(|e| num(e, "Pid") == Some(pid as f64))
+}
+
+#[test]
+fn process_delta_snapshot_lists_title_processes() {
+    unsafe {
+        let me = GetCurrentProcessId();
+        let (hr, t) = call(processdelta::process_information_delta_update_handler, None);
+        assert_eq!(hr, S_OK, "{}", t);
+        let r = parse(&t);
+        assert_eq!(num(&r, "Result"), Some(0.0));
+        let list = array_items(&r, "ProcessEntries");
+        assert!(list.iter().all(|e| titles::is_title_process(num(e, "Pid").unwrap() as u32)));
+        let e = entry_for(&list, me).expect("own process listed");
+        assert_eq!(text(e, "Action").as_deref(), Some("Changed"));
+        assert!(num(e, "ThreadCount").unwrap() >= 1.0);
+        assert!(num(e, "HandleCount").unwrap() >= 1.0);
+        assert!(u64_field(e, "WorkingSetPrivate").unwrap() > 0);
+        assert_eq!(num(e, "DebuggerAttached"), Some(0.0));
+        let name = text(e, "ImagePath").unwrap();
+        let full = text(e, "ImageFullPath").unwrap();
+        assert!(full.to_ascii_lowercase().ends_with(&name.to_ascii_lowercase()), "{} {}", name, full);
+        assert!(name.to_ascii_lowercase().ends_with(".exe"));
+    }
+}
+
+#[test]
+fn process_delta_counts_suspended_threads() {
+    unsafe {
+        let pi = spawn_suspended("cmd /c exit 0");
+        titles::register_title_process(pi.pid);
+        let mut data = Vec::new();
+        let mut base = processdelta::ProcessMap::default();
+        let mut same = processdelta::ProcessMap::default();
+        let mut fresh = processdelta::ProcessMap::default();
+        let hr = processdelta::build_delta_process_list(&mut data, &mut base, &mut same, &mut fresh);
+        assert!(hr >= 0);
+        let e = fresh.0.iter().find(|e| e.pid == pi.pid).cloned().expect("suspended child listed");
+        assert_eq!(e.thread_count, 1);
+        assert_eq!(e.suspended_thread_count, 1);
+        base = processdelta::ProcessMap(fresh.0.clone());
+        let mut same2 = processdelta::ProcessMap::default();
+        let mut fresh2 = processdelta::ProcessMap::default();
+        assert!(processdelta::build_delta_process_list(&mut data, &mut base, &mut same2, &mut fresh2) >= 0);
+        assert!(same2.0.iter().any(|x| x.pid == pi.pid) || fresh2.0.iter().any(|x| x.pid == pi.pid));
+        assert!(base.find(pi.pid).is_none());
+        TerminateProcess(pi.process, 0);
+        WaitForSingleObject(pi.process, 5000);
+        CloseHandle(pi.thread);
+        CloseHandle(pi.process);
+        titles::unregister_title_process(pi.pid);
+    }
+}
+
+#[test]
+fn process_delta_streams_until_send_fails() {
+    unsafe {
+        let sleeper = spawn_sleeper();
+        let cpid = sleeper.id();
+        titles::register_title_process(cpid);
+        let session = MockSession { vtbl: &MS_VTBL, sent: Mutex::new(Vec::new()), accept: 1, child: Mutex::new(Some(sleeper)) };
+        let req = new_message(Some("{\"RefreshRate\":1}"));
+        let rep = new_reply();
+        let start = std::time::Instant::now();
+        let hr = processdelta::process_information_delta_update_handler(&session as *const MockSession as usize, req.0 as usize, rep.0 as usize);
+        titles::unregister_title_process(cpid);
+        assert_eq!(hr, S_OK);
+        assert!(start.elapsed() >= std::time::Duration::from_millis(1000));
+        let r = parse(&reply_text(&rep));
+        assert_eq!(num(&r, "Result"), Some(0.0));
+        assert!(child(&r, "ProcessEntries").is_none());
+        let sent = session.sent.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        assert_eq!(sent.len(), 2);
+        let first = array_items(&parse(&sent[0]), "ProcessEntries");
+        assert_eq!(text(entry_for(&first, cpid).unwrap(), "Action").as_deref(), Some("Changed"));
+        assert_eq!(text(entry_for(&first, GetCurrentProcessId()).unwrap(), "Action").as_deref(), Some("Changed"));
+        let second = array_items(&parse(&sent[1]), "ProcessEntries");
+        let gone = entry_for(&second, cpid).expect("deleted entry");
+        assert_eq!(text(gone, "Action").as_deref(), Some("Deleted"));
+        assert!(num(gone, "ThreadCount").is_none());
     }
 }
 

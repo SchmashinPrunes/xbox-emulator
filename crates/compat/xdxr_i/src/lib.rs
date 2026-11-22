@@ -16,6 +16,6 @@ pub static CONSOLE: Console = Console::new(Spec {
 });
 
 #[no_mangle]
-pub unsafe extern "system" fn XDXRCreateDevice(alloc: *const Allocator, device: *mut c_void, desc: *const Desc) -> *mut c_void {
+pub unsafe extern "system-unwind" fn XDXRCreateDevice(alloc: *const Allocator, device: *mut c_void, desc: *const Desc) -> *mut c_void {
     create_device(&CONSOLE, alloc, device, desc)
 }

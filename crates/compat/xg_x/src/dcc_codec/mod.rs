@@ -10,6 +10,8 @@ mod tests;
 mod oracle_dec;
 #[cfg(test)]
 mod oracle_enc;
+#[cfg(test)]
+mod verify;
 
 use tables::FORMATS;
 

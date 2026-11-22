@@ -39,15 +39,17 @@ pub const CONSOLE_REGISTRATION_ORDER: [u32; 14] = [
     OP_DEBUG_ACTION,
 ];
 
-pub const IMPLEMENTED_HANDLERS: [(u32, OperationFn); 11] = [
+pub const IMPLEMENTED_HANDLERS: [(u32, OperationFn); 13] = [
     (OP_SYSTEM_UP_TIME, crate::system::system_up_time_handler),
     (OP_SET_SYSTEM_GO_DARK, crate::system::set_system_go_dark_handler),
     (OP_FETCH_SYSTEM_GO_DARK, crate::system::fetch_system_go_dark_handler),
     (OP_SET_LOGGING_PROPERTIES, crate::system::set_logging_properties_handler),
     (OP_GET_LOGGING_PROPERTIES, crate::system::get_logging_properties_handler),
+    (OP_PROCESS_INFORMATION_DELTA_UPDATE, crate::processdelta::process_information_delta_update_handler),
     (OP_TERMINATE_PROCESS, crate::process::terminate_process_handler),
     (OP_DEBUG_BREAK, crate::process::debug_break_handler),
     (OP_RESUME_ALL_THREADS, crate::process::resume_all_threads_handler),
+    (OP_REPORT_TITLE_MEMORY, crate::titlememory::title_memory_report_handler),
     (OP_QUERY_PROFILING_DIRECTORY, crate::system::query_profiling_directory_handler),
     (OP_RESUME_DEFERRED_EXECUTION, crate::process::resume_deferred_execution_handler),
     (OP_DEBUG_ACTION, crate::debugaction::debug_action_handler),

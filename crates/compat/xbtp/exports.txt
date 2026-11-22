@@ -82,7 +82,7 @@
 82 ?XbtpOpenPipeSession@@YAJPEBGAEBU_GUID@@PEAV?$shared_ptr@VXbtpSession@@@std@@@Z implemented | NpConnection client, CompleteSessionSetupInternal(ext, false, 30000) (console 0x44f0)
 83 ?XbtpOpenSession@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_N@Z implemented | OpenSessionInternal(..., quiet, 30000) (console 0x4400)
 84 ?XbtpOpenSessionInternal@@YAJAEBU_GUID@@PEBGKPEAPEAVXbtpSession@@_NI@Z implemented | null addr -> localhost; port top byte 0 tcp, 1 XbtpLinkConnection (in-process link), else E_INVALIDARG; offline: non-loopback hosts fail like no route (0x8C110303) (console 0x4160)
-85 ?XbtpOpenXtcSession@@YAJ_KAEBU_GUID@@1PEAPEAX@Z stub | fixed failure, no work done: console returns E_NOTIMPL
+85 ?XbtpOpenXtcSession@@YAJ_KAEBU_GUID@@1PEAPEAX@Z implemented | console body is and qword ptr [r9], 0; mov eax, 0x80004001; ret in all four dumps (Fortnite 0x43d0, Terraria/XDefiant 0x4c00, Trackmania 0x4c30): out handle nulled, E_NOTIMPL; console body reproduced exactly; oracle test tests/console_fixed.rs (out pointer pre-filled)
 86 XbtpSetSystemGoDark implemented
 87 XbtpWaitSystemReady implemented
 88 ?XbtpWrapDispatcher@@YAJV?$shared_ptr@VXbtpConnectionDispatcher@@@std@@AEBU_GUID@@PEAPEAX@Z implemented | null dispatcher or ppv -> E_INVALIDARG; IXbtpDispatcher e6358d7e/335b4b4b: Shutdown, AddExtension(router from metadata), RegisterExtension, SetSessionKey(<=32 chars); RegisterRedirect returns E_NOTIMPL (Connections::AddRedirect 0x11618 not ported, see BLOCKERS)
@@ -106,22 +106,22 @@
 106 XbtpLinkDecodeStatisticRecord implemented | Gateway/Address/Listening/Port IN/OUT lines with console address formatting
 107 XbtpLinkFreeReservedMemory implemented | state 2->3, CancelIoEx, spin while 0x103, returns previous state
 108 XbtpLinkGetOverlappedResult implemented | 0x103 -> E_PENDING, 0 -> bytes, 0xe078xxxx status table -> 0x8c1105xx
-109 XbtpLinkGetServiceLocation stub | fixed failure, no work done: console body: clears buffer/len, returns E_NOTIMPL
+109 XbtpLinkGetServiceLocation implemented | console body: if *len > 0 then buf[0] = 0 and *len = 0; returns E_NOTIMPL (Fortnite 0x29fd0, Terraria/XDefiant 0x300a0, Trackmania 0x30040); console body reproduced exactly; oracle test tests/console_fixed.rs (len 0, 1, 8, 0xffffffff)
 110 XbtpLinkGetServiceOptions implemented | console body: *out = 0, S_OK
-111 XbtpLinkGetServiceVersion stub | fixed failure, no work done: console body returns E_NOTIMPL (0x80004001)
+111 XbtpLinkGetServiceVersion implemented | console body is mov eax, 0x80004001; ret in all four dumps (Fortnite 0xdb90 shared, Terraria/XDefiant 0x300c0, Trackmania 0x30060); console body reproduced exactly; oracle test tests/console_fixed.rs
 112 XbtpLinkHandleControl implemented | code 1 set/clear TCP flag 0x100 (rejected once connected), code 2 query, else E_NOTIMPL
 113 XbtpLinkInitializeSystem implemented | once-only state machine, WSAStartup 2.2, epoch FILETIME, cached error
 114 XbtpLinkListen implemented | binds service id, creates wake/ready events and the "XBTP::Accept" thread, returns ready event
 115 XbtpLinkProcessRoutingSocket implemented | QueueUserWorkItem worker: read 0x80, reply GW_C 0xbf000040 with REDIRECT option, read 0x80, shutdown/close
 116 XbtpLinkQueryHandleInformation implemented | class 1 remote addr (16 bytes), class 2 path info (8 bytes), size checks
-117 XbtpLinkQueryPacketLog stub | fixed failure, no work done: console body returns E_NOTIMPL (0x80004001)
-118 XbtpLinkQueryStatistics stub | fixed failure, no work done: console body returns E_NOTIMPL (0x80004001)
+117 XbtpLinkQueryPacketLog implemented | console body is mov eax, 0x80004001; ret in all four dumps (Fortnite 0xdb90 shared, Terraria/XDefiant 0x302d0, Trackmania 0x30250); console body reproduced exactly; oracle test tests/console_fixed.rs
+118 XbtpLinkQueryStatistics implemented | console body is mov eax, 0x80004001; ret in all four dumps (Fortnite 0xdb90 shared, Terraria/XDefiant 0x302c0, Trackmania 0x30240); console body reproduced exactly; oracle test tests/console_fixed.rs
 119 XbtpLinkRecv implemented | device IOCTL 0x22000b or WSARecv, overlapped or blocking
 120 XbtpLinkSend implemented | DATA header 0xfe000001 plus WSABUFs via IOCTL 0x220007 or WSASend; 0x8c110514 size limits
 121 XbtpLinkSetCompletionPort implemented | CreateIoCompletionPort on device handle, HRESULT from GetLastError
 122 XbtpLinkSetRoutingRedirect implemented | resolves sockaddr into global redirect, result ignored, S_OK (console)
-123 XbtpLinkSetServiceOptions stub | fixed failure, no work done: console body returns E_NOTIMPL (0x80004001)
-124 XbtpLinkSetupRoutingLog stub | fixed failure, no work done: console body returns E_NOTIMPL (0x80004001)
+123 XbtpLinkSetServiceOptions implemented | console body is mov eax, 0x80004001; ret in all four dumps (Fortnite 0xdb90 shared, Terraria/XDefiant 0x300e0, Trackmania 0x30080); console body reproduced exactly; oracle test tests/console_fixed.rs
+124 XbtpLinkSetupRoutingLog implemented | console body is mov eax, 0x80004001; ret in all four dumps (Fortnite 0xdb90 shared, Terraria/XDefiant 0x32690, Trackmania 0x326d0); console body reproduced exactly; oracle test tests/console_fixed.rs
 125 XbtpLinkShutdownHandle implemented | sends END 0xfa000005 once (flag 0x80)
 126 XbtpLinkStartRouting implemented | console body returns S_OK
 127 XbtpLinkStopRouting implemented | console body is a bare ret (void)

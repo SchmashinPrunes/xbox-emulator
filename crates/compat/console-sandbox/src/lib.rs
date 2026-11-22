@@ -4,6 +4,8 @@ use compat_common::os_host::patch::{patch_image, Hook};
 
 pub mod claims;
 pub mod fs;
+pub mod gchost;
+pub mod gcreply;
 pub mod hive;
 pub mod modules;
 pub mod power;
@@ -17,6 +19,7 @@ pub mod regw;
 pub mod system;
 pub mod wstr;
 pub mod xvcmgmt;
+pub mod xvcsys;
 
 #[link(name = "ntdll")]
 extern "system" {
@@ -82,6 +85,10 @@ pub fn hooks() -> Vec<Hook> {
         hook!("ZwCreateFile", NTDLL, xvcmgmt::nt_create_file),
         hook!("NtDeviceIoControlFile", NTDLL, xvcmgmt::nt_device_io_control_file),
         hook!("ZwDeviceIoControlFile", NTDLL, xvcmgmt::nt_device_io_control_file),
+        hook!("NtCancelIoFile", NTDLL, xvcmgmt::nt_cancel_io_file),
+        hook!("ZwCancelIoFile", NTDLL, xvcmgmt::nt_cancel_io_file),
+        hook!("NtCancelIoFileEx", NTDLL, xvcmgmt::nt_cancel_io_file_ex),
+        hook!("ZwCancelIoFileEx", NTDLL, xvcmgmt::nt_cancel_io_file_ex),
         hook!("NtQueryInformationToken", NTDLL, claims::nt_query_information_token),
         hook!("ZwQueryInformationToken", NTDLL, claims::nt_query_information_token),
         hook!("NtCreateWnfStateName", NTDLL, wnf::nt_create_wnf_state_name),
@@ -127,6 +134,8 @@ pub fn hooks() -> Vec<Hook> {
         hook!("RegDeleteKeyW", REG, regw::reg_delete_key_w),
         hook!("CreateFileW", FILE, fs::create_file_w),
         hook!("CloseHandle", &["api-ms-win-core-handle-", "kernelbase", "kernel32"], xvcmgmt::close_handle),
+        hook!("CancelIo", &["api-ms-win-core-io-", "kernelbase", "kernel32"], xvcmgmt::cancel_io),
+        hook!("CancelIoEx", &["api-ms-win-core-io-", "kernelbase", "kernel32"], xvcmgmt::cancel_io_ex),
         hook!("DeviceIoControl", &["api-ms-win-core-io-", "kernelbase", "kernel32"], xvcmgmt::device_io_control),
         hook!("GetFileAttributesW", FILE, fs::get_file_attributes_w),
         hook!("DeleteFileW", FILE, fs::delete_file_w),

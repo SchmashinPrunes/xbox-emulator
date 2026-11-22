@@ -84,6 +84,9 @@ extern "system" {
     pub fn GetModuleHandleW(name: *const u16) -> HANDLE;
     pub fn LoadLibraryExW(name: *const u16, file: HANDLE, flags: u32) -> HANDLE;
     pub fn GetProcAddress(m: HANDLE, name: *const u8) -> *mut c_void;
+    pub fn K32EnumProcesses(pids: *mut u32, cb: u32, needed: *mut u32) -> BOOL;
+    pub fn QueryFullProcessImageNameW(h: HANDLE, flags: u32, name: *mut u16, size: *mut u32) -> BOOL;
+    pub fn K32GetModuleFileNameExW(h: HANDLE, module: HANDLE, name: *mut u16, size: u32) -> u32;
 }
 
 #[link(name = "ntdll")]
@@ -92,6 +95,7 @@ extern "system" {
     pub fn NtQueryInformationProcess(h: HANDLE, class: u32, info: *mut c_void, len: u32, ret: *mut u32) -> i32;
     pub fn NtGetNextThread(process: HANDLE, thread: HANDLE, access: u32, attributes: u32, flags: u32, next: *mut HANDLE) -> i32;
     pub fn RtlNtStatusToDosError(status: i32) -> u32;
+    pub fn NtQuerySystemInformation(class: u32, info: *mut c_void, len: u32, ret: *mut u32) -> i32;
 }
 
 #[link(name = "ole32")]

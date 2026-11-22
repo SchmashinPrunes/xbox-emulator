@@ -1845,7 +1845,7 @@
 <rect x="875.00" y="880.00" width="125.00" height="60.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="880.00" y="896.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Amplification</text>
 </g>
-<text x="4.00" y="971.00" font-family="sans-serif" font-size="16" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Xbox console libraries: 96.53% (2084/2159)</text>
+<text x="4.00" y="971.00" font-family="sans-serif" font-size="16" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Xbox console libraries: 98.10% (2118/2159)</text>
 <rect x="4" y="982" width="10" height="10" fill="#2ea043"/>
 <text x="18.00" y="991.00" font-family="sans-serif" font-size="11" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">implemented</text>
 <rect x="109" y="982" width="10" height="10" fill="#388bfd"/>
@@ -1908,10 +1908,10 @@
 <rect x="0.00" y="998.00" width="299.68" height="421.48" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="5.00" y="1014.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">kernel32legacy</text>
 </g>
-<g><title>advapi32legacy.dll: 206/207 covered; Fortnite imports 1, Terraria imports 1, Trackmania imports 1, XDefiant imports 1</title>
-<rect x="1.00" y="1420.48" width="99.23" height="20.42" fill="#2ea043"/>
-<rect x="100.23" y="1420.48" width="19.85" height="20.42" fill="#91bffd"/>
-<rect x="120.07" y="1420.48" width="178.61" height="20.42" fill="#388bfd"/>
+<g><title>advapi32legacy.dll: 207/207 covered; Fortnite imports 1, Terraria imports 1, Trackmania imports 1, XDefiant imports 1</title>
+<rect x="1.00" y="1420.48" width="119.07" height="20.42" fill="#2ea043"/>
+<rect x="120.07" y="1420.48" width="19.85" height="20.42" fill="#91bffd"/>
+<rect x="139.92" y="1420.48" width="158.76" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1440.91" width="297.68" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1461.33" width="297.68" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1481.76" width="297.68" height="20.42" fill="#388bfd"/>
@@ -1924,8 +1924,7 @@
 <rect x="1.00" y="1624.73" width="297.68" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1645.15" width="297.68" height="20.42" fill="#388bfd"/>
 <rect x="1.00" y="1665.58" width="297.68" height="20.42" fill="#388bfd"/>
-<rect x="1.00" y="1686.00" width="218.30" height="20.42" fill="#388bfd"/>
-<rect x="219.30" y="1686.00" width="19.85" height="20.42" fill="#d29922"/>
+<rect x="1.00" y="1686.00" width="238.14" height="20.42" fill="#388bfd"/>
 <line x1="1.00" y1="1440.91" x2="298.68" y2="1440.91" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="1.00" y1="1461.33" x2="298.68" y2="1461.33" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="1.00" y1="1481.76" x2="298.68" y2="1481.76" stroke="#0d1117" stroke-width="0.5"/>
@@ -1942,7 +1941,7 @@
 <rect x="0.00" y="1419.48" width="299.68" height="287.94" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="5.00" y="1435.48" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">advapi32legacy</text>
 </g>
-<g><title>xcrdapi.dll: 130/137 covered; Fortnite imports 1</title>
+<g><title>xcrdapi.dll: 137/137 covered; Fortnite imports 1</title>
 <rect x="1.00" y="1708.43" width="19.85" height="18.86" fill="#8cca97"/>
 <rect x="20.85" y="1708.43" width="277.83" height="18.86" fill="#2ea043"/>
 <rect x="1.00" y="1727.29" width="297.68" height="18.86" fill="#2ea043"/>
@@ -1952,9 +1951,8 @@
 <rect x="1.00" y="1802.71" width="297.68" height="18.86" fill="#2ea043"/>
 <rect x="1.00" y="1821.57" width="297.68" height="18.86" fill="#2ea043"/>
 <rect x="1.00" y="1840.43" width="297.68" height="18.86" fill="#2ea043"/>
-<rect x="1.00" y="1859.29" width="198.45" height="18.86" fill="#2ea043"/>
-<rect x="199.45" y="1859.29" width="99.23" height="18.86" fill="#d29922"/>
-<rect x="1.00" y="1878.14" width="39.69" height="18.86" fill="#d29922"/>
+<rect x="1.00" y="1859.29" width="297.68" height="18.86" fill="#2ea043"/>
+<rect x="1.00" y="1878.14" width="39.69" height="18.86" fill="#2ea043"/>
 <line x1="1.00" y1="1727.29" x2="298.68" y2="1727.29" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="1.00" y1="1746.14" x2="298.68" y2="1746.14" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="1.00" y1="1765.00" x2="298.68" y2="1765.00" stroke="#0d1117" stroke-width="0.5"/>
@@ -1967,7 +1965,7 @@
 <rect x="0.00" y="1707.43" width="299.68" height="190.57" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="5.00" y="1723.43" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">xcrdapi</text>
 </g>
-<g><title>xbtp.dll: 126/133 covered; not imported by an analysed title</title>
+<g><title>xbtp.dll: 133/133 covered; not imported by an analysed title</title>
 <rect x="300.68" y="999.00" width="267.98" height="20.34" fill="#2ea043"/>
 <rect x="300.68" y="1019.34" width="267.98" height="20.34" fill="#2ea043"/>
 <rect x="300.68" y="1039.67" width="267.98" height="20.34" fill="#2ea043"/>
@@ -1976,9 +1974,9 @@
 <rect x="300.68" y="1100.68" width="267.98" height="20.34" fill="#2ea043"/>
 <rect x="300.68" y="1121.01" width="267.98" height="20.34" fill="#2ea043"/>
 <rect x="300.68" y="1141.35" width="267.98" height="20.34" fill="#2ea043"/>
-<rect x="300.68" y="1161.69" width="229.70" height="20.34" fill="#2ea043"/>
-<rect x="530.37" y="1161.69" width="38.28" height="20.34" fill="#388bfd"/>
-<rect x="300.68" y="1182.02" width="133.99" height="20.34" fill="#d29922"/>
+<rect x="300.68" y="1161.69" width="267.98" height="20.34" fill="#2ea043"/>
+<rect x="300.68" y="1182.02" width="95.71" height="20.34" fill="#2ea043"/>
+<rect x="396.38" y="1182.02" width="38.28" height="20.34" fill="#388bfd"/>
 <line x1="300.68" y1="1019.34" x2="568.66" y2="1019.34" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="300.68" y1="1039.67" x2="568.66" y2="1039.67" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="300.68" y1="1060.01" x2="568.66" y2="1060.01" stroke="#0d1117" stroke-width="0.5"/>
@@ -2038,19 +2036,18 @@
 <rect x="719.87" y="998.00" width="144.12" height="205.36" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="724.87" y="1014.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">GDK XStore (QueryAp</text>
 </g>
-<g><title>sc_dll.dll: 64/67 covered; not imported by an analysed title</title>
+<g><title>sc_dll.dll: 67/67 covered; not imported by an analysed title</title>
 <rect x="865.00" y="999.00" width="134.00" height="20.34" fill="#2ea043"/>
 <rect x="865.00" y="1019.34" width="134.00" height="20.34" fill="#2ea043"/>
-<rect x="865.00" y="1039.67" width="95.72" height="20.34" fill="#2ea043"/>
-<rect x="960.71" y="1039.67" width="38.29" height="20.34" fill="#388bfd"/>
-<rect x="865.00" y="1060.01" width="134.00" height="20.34" fill="#388bfd"/>
+<rect x="865.00" y="1039.67" width="134.00" height="20.34" fill="#2ea043"/>
+<rect x="865.00" y="1060.01" width="19.14" height="20.34" fill="#2ea043"/>
+<rect x="884.14" y="1060.01" width="114.86" height="20.34" fill="#388bfd"/>
 <rect x="865.00" y="1080.34" width="134.00" height="20.34" fill="#388bfd"/>
 <rect x="865.00" y="1100.68" width="134.00" height="20.34" fill="#388bfd"/>
 <rect x="865.00" y="1121.01" width="134.00" height="20.34" fill="#388bfd"/>
 <rect x="865.00" y="1141.35" width="134.00" height="20.34" fill="#388bfd"/>
 <rect x="865.00" y="1161.69" width="134.00" height="20.34" fill="#388bfd"/>
-<rect x="865.00" y="1182.02" width="19.14" height="20.34" fill="#388bfd"/>
-<rect x="884.14" y="1182.02" width="57.43" height="20.34" fill="#d29922"/>
+<rect x="865.00" y="1182.02" width="76.57" height="20.34" fill="#388bfd"/>
 <line x1="865.00" y1="1019.34" x2="999.00" y2="1019.34" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="865.00" y1="1039.67" x2="999.00" y2="1039.67" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="865.00" y1="1060.01" x2="999.00" y2="1060.01" stroke="#0d1117" stroke-width="0.5"/>
@@ -2084,7 +2081,7 @@
 <rect x="299.68" y="1203.36" width="132.62" height="188.59" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="304.68" y="1219.36" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">xtfbaseservices</text>
 </g>
-<g><title>d3d12_xs.dll: 51/55 covered; Fortnite imports 6, Minecraft imports 3, XDefiant imports 3</title>
+<g><title>d3d12_xs.dll: 55/55 covered; Fortnite imports 6, Minecraft imports 3, XDefiant imports 3</title>
 <rect x="300.68" y="1392.95" width="130.62" height="21.36" fill="#8cca97"/>
 <rect x="300.68" y="1414.31" width="130.62" height="21.36" fill="#2ea043"/>
 <rect x="300.68" y="1435.67" width="130.62" height="21.36" fill="#2ea043"/>
@@ -2092,8 +2089,8 @@
 <rect x="300.68" y="1478.39" width="130.62" height="21.36" fill="#2ea043"/>
 <rect x="300.68" y="1499.74" width="130.62" height="21.36" fill="#2ea043"/>
 <rect x="300.68" y="1521.10" width="130.62" height="21.36" fill="#2ea043"/>
-<rect x="300.68" y="1542.46" width="37.32" height="21.36" fill="#388bfd"/>
-<rect x="338.00" y="1542.46" width="74.64" height="21.36" fill="#d29922"/>
+<rect x="300.68" y="1542.46" width="74.64" height="21.36" fill="#2ea043"/>
+<rect x="375.32" y="1542.46" width="37.32" height="21.36" fill="#388bfd"/>
 <line x1="300.68" y1="1414.31" x2="431.30" y2="1414.31" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="300.68" y1="1435.67" x2="431.30" y2="1435.67" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="300.68" y1="1457.03" x2="431.30" y2="1457.03" stroke="#0d1117" stroke-width="0.5"/>
@@ -2104,7 +2101,7 @@
 <rect x="299.68" y="1391.95" width="132.62" height="172.87" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="304.68" y="1407.95" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">d3d12_xs</text>
 </g>
-<g><title>d3d12_x.dll: 48/54 covered; Terraria imports 4, Trackmania imports 5</title>
+<g><title>d3d12_x.dll: 54/54 covered; Terraria imports 4, Trackmania imports 5</title>
 <rect x="300.68" y="1565.82" width="93.30" height="20.97" fill="#8cca97"/>
 <rect x="393.98" y="1565.82" width="37.32" height="20.97" fill="#2ea043"/>
 <rect x="300.68" y="1586.79" width="130.62" height="20.97" fill="#2ea043"/>
@@ -2112,11 +2109,10 @@
 <rect x="300.68" y="1628.72" width="130.62" height="20.97" fill="#2ea043"/>
 <rect x="300.68" y="1649.69" width="130.62" height="20.97" fill="#2ea043"/>
 <rect x="300.68" y="1670.66" width="130.62" height="20.97" fill="#2ea043"/>
-<rect x="300.68" y="1691.62" width="74.64" height="20.97" fill="#2ea043"/>
-<rect x="375.32" y="1691.62" width="18.66" height="20.97" fill="#91bffd"/>
-<rect x="393.98" y="1691.62" width="18.66" height="20.97" fill="#388bfd"/>
-<rect x="412.64" y="1691.62" width="18.66" height="20.97" fill="#d29922"/>
-<rect x="300.68" y="1712.59" width="93.30" height="20.97" fill="#d29922"/>
+<rect x="300.68" y="1691.62" width="130.62" height="20.97" fill="#2ea043"/>
+<rect x="300.68" y="1712.59" width="55.98" height="20.97" fill="#2ea043"/>
+<rect x="356.66" y="1712.59" width="18.66" height="20.97" fill="#91bffd"/>
+<rect x="375.32" y="1712.59" width="18.66" height="20.97" fill="#388bfd"/>
 <line x1="300.68" y1="1586.79" x2="431.30" y2="1586.79" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="300.68" y1="1607.76" x2="431.30" y2="1607.76" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="300.68" y1="1628.72" x2="431.30" y2="1628.72" stroke="#0d1117" stroke-width="0.5"/>
@@ -2146,13 +2142,14 @@
 <rect x="299.68" y="1734.55" width="132.62" height="163.45" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="304.68" y="1750.55" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">xpal</text>
 </g>
-<g><title>xbsc_xs.dll: 40/41 covered; not imported by an analysed title</title>
+<g><title>xbsc_xs.dll: 41/41 covered; not imported by an analysed title</title>
 <rect x="433.30" y="1204.36" width="150.13" height="18.39" fill="#2ea043"/>
 <rect x="433.30" y="1222.75" width="150.13" height="18.39" fill="#2ea043"/>
-<rect x="433.30" y="1241.14" width="150.13" height="18.39" fill="#388bfd"/>
+<rect x="433.30" y="1241.14" width="18.77" height="18.39" fill="#2ea043"/>
+<rect x="452.07" y="1241.14" width="131.36" height="18.39" fill="#388bfd"/>
 <rect x="433.30" y="1259.53" width="150.13" height="18.39" fill="#388bfd"/>
 <rect x="433.30" y="1277.92" width="150.13" height="18.39" fill="#388bfd"/>
-<rect x="433.30" y="1296.31" width="18.77" height="18.39" fill="#d29922"/>
+<rect x="433.30" y="1296.31" width="18.77" height="18.39" fill="#388bfd"/>
 <line x1="433.30" y1="1222.75" x2="583.43" y2="1222.75" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="433.30" y1="1241.14" x2="583.43" y2="1241.14" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="433.30" y1="1259.53" x2="583.43" y2="1259.53" stroke="#0d1117" stroke-width="0.5"/>
@@ -2313,12 +2310,13 @@
 <rect x="432.30" y="1621.65" width="102.58" height="97.53" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="437.30" y="1637.65" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">GDK XPackage </text>
 </g>
-<g><title>xg_xs.dll: 23/23 covered; Fortnite imports 1, XDefiant imports 1</title>
+<g><title>xg_xs.dll: 21/23 covered; Fortnite imports 1, XDefiant imports 1</title>
 <rect x="433.30" y="1720.19" width="33.53" height="22.87" fill="#8cca97"/>
 <rect x="466.82" y="1720.19" width="67.05" height="22.87" fill="#2ea043"/>
 <rect x="433.30" y="1743.05" width="100.58" height="22.87" fill="#2ea043"/>
 <rect x="433.30" y="1765.92" width="100.58" height="22.87" fill="#2ea043"/>
-<rect x="433.30" y="1788.79" width="83.81" height="22.87" fill="#2ea043"/>
+<rect x="433.30" y="1788.79" width="50.29" height="22.87" fill="#2ea043"/>
+<rect x="483.59" y="1788.79" width="33.53" height="22.87" fill="#e3b341"/>
 <line x1="433.30" y1="1743.05" x2="533.87" y2="1743.05" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="433.30" y1="1765.92" x2="533.87" y2="1765.92" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="433.30" y1="1788.79" x2="533.87" y2="1788.79" stroke="#0d1117" stroke-width="0.5"/>
@@ -2331,7 +2329,7 @@
 <rect x="433.30" y="1834.49" width="100.58" height="20.84" fill="#2ea043"/>
 <rect x="433.30" y="1855.33" width="100.58" height="20.84" fill="#2ea043"/>
 <rect x="433.30" y="1876.16" width="16.76" height="20.84" fill="#2ea043"/>
-<rect x="450.06" y="1876.16" width="33.53" height="20.84" fill="#d29922"/>
+<rect x="450.06" y="1876.16" width="33.53" height="20.84" fill="#e3b341"/>
 <line x1="433.30" y1="1834.49" x2="533.87" y2="1834.49" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="433.30" y1="1855.33" x2="533.87" y2="1855.33" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="433.30" y1="1876.16" x2="533.87" y2="1876.16" stroke="#0d1117" stroke-width="0.5"/>
@@ -2423,11 +2421,11 @@
 <rect x="534.87" y="1594.65" width="89.32" height="79.34" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="539.87" y="1610.65" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">xgs12_i</text>
 </g>
-<g><title>pixevt.dll: 15/16 covered; not imported by an analysed title</title>
+<g><title>pixevt.dll: 16/16 covered; not imported by an analysed title</title>
 <rect x="535.87" y="1674.99" width="87.32" height="18.17" fill="#2ea043"/>
 <rect x="535.87" y="1693.15" width="87.32" height="18.17" fill="#2ea043"/>
 <rect x="535.87" y="1711.32" width="87.32" height="18.17" fill="#2ea043"/>
-<rect x="535.87" y="1729.49" width="17.46" height="18.17" fill="#d29922"/>
+<rect x="535.87" y="1729.49" width="17.46" height="18.17" fill="#2ea043"/>
 <line x1="535.87" y1="1693.15" x2="623.20" y2="1693.15" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="535.87" y1="1711.32" x2="623.20" y2="1711.32" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="535.87" y1="1729.49" x2="623.20" y2="1729.49" stroke="#0d1117" stroke-width="0.5"/>
@@ -2456,11 +2454,11 @@
 <rect x="534.87" y="1823.33" width="89.32" height="74.67" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="539.87" y="1839.33" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">GDK XNetwor</text>
 </g>
-<g><title>mflnmhelp.dll: 12/15 covered; not imported by an analysed title</title>
+<g><title>mflnmhelp.dll: 15/15 covered; not imported by an analysed title</title>
 <rect x="625.20" y="1516.31" width="77.40" height="19.19" fill="#2ea043"/>
 <rect x="625.20" y="1535.50" width="77.40" height="19.19" fill="#2ea043"/>
 <rect x="625.20" y="1554.69" width="77.40" height="19.19" fill="#2ea043"/>
-<rect x="625.20" y="1573.88" width="58.05" height="19.19" fill="#d29922"/>
+<rect x="625.20" y="1573.88" width="58.05" height="19.19" fill="#2ea043"/>
 <line x1="625.20" y1="1535.50" x2="702.59" y2="1535.50" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="625.20" y1="1554.69" x2="702.59" y2="1554.69" stroke="#0d1117" stroke-width="0.5"/>
 <line x1="625.20" y1="1573.88" x2="702.59" y2="1573.88" stroke="#0d1117" stroke-width="0.5"/>
@@ -2703,10 +2701,9 @@
 <rect x="830.57" y="1651.96" width="42.36" height="49.21" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="835.57" y="1667.96" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">lsasr</text>
 </g>
-<g><title>mfhevcdec.dll: 4/5 covered; not imported by an analysed title</title>
+<g><title>mfhevcdec.dll: 5/5 covered; not imported by an analysed title</title>
 <rect x="873.93" y="1652.96" width="40.36" height="23.60" fill="#2ea043"/>
-<rect x="873.93" y="1676.56" width="13.45" height="23.60" fill="#2ea043"/>
-<rect x="887.38" y="1676.56" width="13.45" height="23.60" fill="#d29922"/>
+<rect x="873.93" y="1676.56" width="26.90" height="23.60" fill="#2ea043"/>
 <line x1="873.93" y1="1676.56" x2="914.29" y2="1676.56" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="872.93" y="1651.96" width="42.36" height="49.21" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="877.93" y="1667.96" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">mfhev</text>
@@ -2895,8 +2892,8 @@
 <rect x="972.75" y="1771.81" width="27.25" height="30.59" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="977.75" y="1787.81" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">xtf</text>
 </g>
-<g><title>xtfremoterun.dll: 0/2 covered; not imported by an analysed title</title>
-<rect x="891.99" y="1803.40" width="24.16" height="29.87" fill="#6e7681"/>
+<g><title>xtfremoterun.dll: 2/2 covered; not imported by an analysed title</title>
+<rect x="891.99" y="1803.40" width="24.16" height="29.87" fill="#2ea043"/>
 <rect x="890.99" y="1802.40" width="26.16" height="31.87" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="895.99" y="1818.40" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">xt</text>
 </g>

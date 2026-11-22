@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub const CLSID: Guid = Guid::parse("dfcd4649-4ff8-4043-ba07-35d607df98b0");
 pub const IID_V1: Guid = Guid::parse("6eeaa73e-9669-43ad-a2c7-d0da4e1f50a1");
 pub const IID_V2: Guid = Guid::parse("72c4e70f-4a67-481b-bb84-aa72eda14fe5");
+pub const IID_FC0B: Guid = Guid::parse("fc0b9bd0-8898-4643-bee0-4ee6ee034cb6");
 
 static OP_MESSAGE: &[u8] = b"XGameUiShowMessageDialogAsync\0";
 static OP_STATUS: &[u8] = b"XGameUiShowAsync\0";
@@ -351,5 +352,6 @@ pub fn interfaces() -> Vec<Iface> {
     vec![
         Iface { clsid: CLSID, iid: IID_V1, name: "XGameUi(6eeaa73e)", slots: v1 },
         Iface { clsid: CLSID, iid: IID_V2, name: "XGameUi(72c4e70f)", slots: v2 },
+        Iface { clsid: CLSID, iid: IID_FC0B, name: "XGameUi(fc0b9bd0)", slots: v1_slots() },
     ]
 }

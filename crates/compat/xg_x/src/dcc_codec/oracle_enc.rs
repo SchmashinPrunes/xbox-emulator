@@ -204,7 +204,7 @@ fn enc_fault_cases(or: &super::tests::Tm) -> Vec<(i32, i32, [u32; 2], [u8; 256],
             };
             let (mut dst, mut meta) = ([0u8; 256], [0u8; 1]);
             if let run::Outcome::Stopped { why, .. } = run::encode_blocks(&mut runs, &s0, &mut dst, &mut meta, None) {
-                if v.iter().filter(|c| c.5 == why).count() < 5 && !v.iter().any(|c| c.5 == why && c.0 == f && c.1 == t) {
+                if !why.contains("after its stack arguments") && v.iter().filter(|c| c.5 == why).count() < 5 && !v.iter().any(|c| c.5 == why && c.0 == f && c.1 == t) {
                     v.push((f, t, p, s0, sc, why));
                 }
             }
@@ -235,8 +235,6 @@ fn oracle_xgx_dcc_enc_fault_classes() {
         println!("xg_x dcc enc fault class: {n} child processes running console XGEncodeDCC exited {code:#x}: {w}");
         if w.contains("bytes per element / 4") {
             assert_eq!(*code, 0xc000_0094, "{w}");
-        } else if w.contains("walks past sector 3") {
-            assert_eq!(*code, 0xc000_0005, "{w}");
         } else if w.contains("overruns") {
             assert!(*code == 0 || *code == 0xc000_0005 || *code == 0xc000_0374, "{w}");
         } else {
@@ -317,11 +315,23 @@ fn oracle_xgx_dcc_enc_stream_overflow_layout() {
     assert!(n > 0);
 }
 
-fn walk_cases(or: &super::tests::Tm) -> Vec<(i32, i32, [u32; 2], [u8; 256], super::run::Scratch, usize)> {
-    let mut v = Vec::new();
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+fn unhex(s: &str) -> Vec<u8> {
+    (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect()
+}
+
+fn neighbour_class(w: &str) -> bool {
+    w.contains("reads past") || w.contains("message pointer")
+}
+
+fn neighbour_cases(or: &super::tests::Tm) -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = Vec::new();
     let mut r = Rng(0x3a1c_0f5e);
     for &(f, t, _) in &cases(or) {
-        for _ in 0..40 {
+        for _ in 0..60 {
             let p = params(&mut r);
             let s0 = block(&mut r);
             let sc = known(&mut r);
@@ -331,9 +341,9 @@ fn walk_cases(or: &super::tests::Tm) -> Vec<(i32, i32, [u32; 2], [u8; 256], supe
                     break;
                 }
                 nd.s[0] = s0;
-                if let Err(super::Stop::Fault(w)) = enc::run(&mut nd) {
-                    if w.contains("walks past sector 3") && v.len() < 24 {
-                        v.push((f, t, p, s0, super::run::Scratch { b: sc.b, unknown: sc.unknown }, fl));
+                if let Err(super::Stop::Undef(w)) = enc::run(&mut nd) {
+                    if neighbour_class(w) && v.iter().filter(|c| c.1 == w).count() < 6 {
+                        v.push((format!("{f} {t} {} {} {} {} {fl}", p[0], p[1], hex(&s0), hex(&sc.b)), w.to_string()));
                     }
                     break;
                 }
@@ -343,22 +353,40 @@ fn walk_cases(or: &super::tests::Tm) -> Vec<(i32, i32, [u32; 2], [u8; 256], supe
     v
 }
 
+fn neighbour_child(spec: &str, guard: usize) -> u32 {
+    std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["dcc_codec::oracle_enc::oracle_xgx_dcc_enc_neighbour_memory_classes", "--exact", "--test-threads=1"])
+        .env("XGX_DCC_ENC_NB", format!("{spec} {guard}"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap()
+        .code()
+        .unwrap_or(0) as u32
+}
+
 #[test]
-fn oracle_xgx_dcc_enc_plane_walk_reads_neighbours() {
-    if let Ok(spec) = std::env::var("XGX_DCC_ENC_WALK") {
+fn oracle_xgx_dcc_enc_neighbour_memory_classes() {
+    if let Ok(spec) = std::env::var("XGX_DCC_ENC_NB") {
         let Some((_orc, ref or)) = console() else { std::process::exit(3) };
-        let (i, g) = spec.split_once(':').unwrap();
-        let guard = if g == "1" { 0xffu8 } else { 0x00 };
-        let (f, t, p, s0, sc, fl) = walk_cases(or).swap_remove(i.parse().unwrap());
+        let w: Vec<&str> = spec.split(' ').collect();
+        let (f, t, p) = (w[0].parse().unwrap(), w[1].parse().unwrap(), [w[2].parse().unwrap(), w[3].parse().unwrap()]);
+        let s0: [u8; 256] = unhex(w[4]).try_into().unwrap();
+        let sc = super::run::Scratch { b: unhex(w[5]).try_into().unwrap(), unknown: 0 };
+        let fl: usize = w[6].parse().unwrap();
+        let g: usize = w[7].parse().unwrap();
+        let gb = |i: usize| -> u8 { super::run::fill(g, 0x9000 + i) };
         let drv: St = unsafe { core::mem::transmute(or.rva(0x189b0)) };
         let (c, _) = Con::new(or, f, t, p);
         let mut d = fresh(fl, &sc);
         d.setup(f, t, p[0], p[1]);
         prefill(&c, &d);
         c.set_surf(0, &s0);
-        unsafe { core::ptr::write_bytes((c.ptr() as *mut u8).add(0x420), guard, c.buf.len() * 8 - 0x420) };
-        let mut s1 = vec![0u8; 0x40000];
-        let mut s2 = vec![guard; 0x40000];
+        for i in 0x420..c.buf.len() * 8 {
+            unsafe { (c.ptr() as *mut u8).add(i).write(gb(i)) };
+        }
+        let mut s1 = vec![0xa5u8; 0x40000];
+        let mut s2: Vec<u8> = (0..0x40000).map(|i| gb(0x10000 + i)).collect();
         s2[..256].copy_from_slice(&c.get_surf(2));
         unsafe {
             (c.ptr() as *mut u8).add(0x98).cast::<*mut u8>().write_unaligned(s1.as_mut_ptr());
@@ -369,22 +397,29 @@ fn oracle_xgx_dcc_enc_plane_walk_reads_neighbours() {
         for b in s1[..256].iter().chain(core::iter::once(&c.image()[0x34])) {
             h = (h ^ *b as u32).wrapping_mul(0x0100_0193);
         }
-        std::process::exit((h & 0xffff) as i32 + 0x10);
+        let past = s1[256..].iter().any(|&b| b != 0xa5);
+        std::process::exit((h & 0xffff) as i32 + 0x10 + if past { 0x10_0000 } else { 0 });
     }
     let Some((_orc, ref or)) = console() else { return };
-    let wc = walk_cases(or);
-    let (mut crashed, mut differ, mut same_out) = (0usize, 0usize, 0usize);
-    for i in 0..wc.len() {
-        let x = std::process::Command::new(std::env::current_exe().unwrap()).args(["dcc_codec::oracle_enc::oracle_xgx_dcc_enc_plane_walk_reads_neighbours", "--exact", "--test-threads=1"]).env("XGX_DCC_ENC_WALK", format!("{i}:0")).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().unwrap().code().unwrap_or(0) as u32;
-        let y = std::process::Command::new(std::env::current_exe().unwrap()).args(["dcc_codec::oracle_enc::oracle_xgx_dcc_enc_plane_walk_reads_neighbours", "--exact", "--test-threads=1"]).env("XGX_DCC_ENC_WALK", format!("{i}:1")).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().unwrap().code().unwrap_or(0) as u32;
-        if x >= 0xc000_0000 || y >= 0xc000_0000 {
-            crashed += 1;
-        } else if x != y {
-            differ += 1;
+    let nc = neighbour_cases(or);
+    let mut by: std::collections::BTreeMap<String, [usize; 4]> = Default::default();
+    for (spec, w) in &nc {
+        let codes: Vec<u32> = (0..6).map(|g| neighbour_child(spec, g)).collect();
+        let e = by.entry(w.clone()).or_default();
+        if codes.iter().any(|&c| c >= 0xc000_0000) {
+            e[0] += 1;
+        } else if codes.iter().any(|&c| c & 0xffff != codes[0] & 0xffff) {
+            e[1] += 1;
+        } else if codes.iter().all(|&c| c & 0x10_0000 != 0) {
+            e[3] += 1;
         } else {
-            same_out += 1;
+            e[2] += 1;
         }
-        println!("walk case {i} fmt {} tile {} params {:x?}: guard 00 -> {x:#x}, guard ff -> {y:#x}", wc[i].0, wc[i].1, wc[i].2);
     }
-    println!("xg_x dcc enc plane walk: {} cases; console driver 0x189b0 faulted in {crashed}, gave different output for different memory past its object and surface 2 in {differ}, same output in {same_out}", wc.len());
+    for (w, [crash, differ, same_out, past]) in &by {
+        println!("xg_x dcc enc neighbour-memory class: {} cases, console driver 0x189b0 faulted under at least one of 6 guard fills (00, ff, 4 hashed patterns) in {crash}, output changed with the bytes past its object and surface 2 in {differ}, overran its 256-byte output surface under every fill in {past}, none of these in {same_out}: {w}", crash + differ + same_out + past);
+    }
+    for (w, k) in &by {
+        assert_eq!(k[2], 0, "{w}");
+    }
 }

@@ -508,7 +508,7 @@ pub fn interfaces() -> Vec<Iface> {
             clsid: CLSID,
             iid: IID_V1,
             name: "XUser(eb9bf948)",
-            slots: pick(&u, &[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33, 34]),
+            slots: pick(&u, &[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33, 34]),
         },
         Iface {
             clsid: CLSID,

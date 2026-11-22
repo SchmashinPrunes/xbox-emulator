@@ -10,6 +10,9 @@ pub mod process;
 pub mod debugaction;
 pub mod entry;
 pub mod monitor;
+pub mod xmemi;
+pub mod titlememory;
+pub mod processdelta;
 
 #[cfg(test)]
 mod tests;

@@ -16,7 +16,7 @@ pub struct Desc {
     pub reserved: [u64; 3],
 }
 
-pub type CreateDeviceFn = unsafe extern "system" fn(*const Allocator, *mut c_void, *const Desc) -> *mut c_void;
+pub type CreateDeviceFn = unsafe extern "system-unwind" fn(*const Allocator, *mut c_void, *const Desc) -> *mut c_void;
 
 pub const EMULATED_IMPORTS: &[&str] = &["xmem.dll"];
 

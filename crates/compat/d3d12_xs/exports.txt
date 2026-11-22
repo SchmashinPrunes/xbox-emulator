@@ -16,10 +16,10 @@
 16 D3D12XboxSetProcessDebugFlags implemented | console 0x1010 (19041 build 0x1280): stores flags & 0x83f00001 on OS build 22000+, flags & 0x81f00001 on 19041 (title console OS build), returns S_OK; the stored flags select the debug driver / PC debug layer at the next device creation; tests/process_debug_19041.rs
 17 D3D12XboxUnloadDriverModule implemented | console 0x1710: if the driver module is loaded, FreeLibrary it and zero the driver state; here FreeLibrary on the xgs12 driver module this runtime loaded (driver_state OWNED) and clear it, nothing when none is loaded
 18 D3DFlushEntireCpuCache implemented | full fence + FlushProcessWriteBuffers: PC CPU-visible heaps are coherent, so draining every core's store buffer is the visible effect of the console cache flush
-19 DXGIXGetFrameStatistics stub | fixed failure, no work done: console returns DXGI_ERROR_UNSUPPORTED (0x887a0004) unconditionally
-20 DXGIXPresentArray stub | fixed failure, no work done: console returns DXGI_ERROR_UNSUPPORTED (0x887a0004) unconditionally
-21 DXGIXSetFrameNotification stub | fixed failure, no work done: console returns DXGI_ERROR_UNSUPPORTED (0x887a0004) unconditionally
-22 DXGIXSetVLineNotification stub | fixed failure, no work done: console returns DXGI_ERROR_UNSUPPORTED (0x887a0004) unconditionally
+19 DXGIXGetFrameStatistics implemented | console body is mov eax, 0x887a0004; ret (DXGI_ERROR_UNSUPPORTED); console body reproduced exactly, no arguments read, LastError untouched; oracle test against all 3 distinct console copies (Fortnite, Terraria = XDefiant, Trackmania): src/xs_exports.rs console_fixed_tests
+20 DXGIXPresentArray implemented | console body is mov eax, 0x887a0004; ret (DXGI_ERROR_UNSUPPORTED); console body reproduced exactly, no arguments read, LastError untouched; oracle test against all 3 distinct console copies (Fortnite, Terraria = XDefiant, Trackmania): src/xs_exports.rs console_fixed_tests
+21 DXGIXSetFrameNotification implemented | console body is mov eax, 0x887a0004; ret (DXGI_ERROR_UNSUPPORTED); console body reproduced exactly, no arguments read, LastError untouched; oracle test against all 3 distinct console copies (Fortnite, Terraria = XDefiant, Trackmania): src/xs_exports.rs console_fixed_tests
+22 DXGIXSetVLineNotification implemented | console body is mov eax, 0x887a0004; ret (DXGI_ERROR_UNSUPPORTED); console body reproduced exactly, no arguments read, LastError untouched; oracle test against all 3 distinct console copies (Fortnite, Terraria = XDefiant, Trackmania): src/xs_exports.rs console_fixed_tests
 23 IID_ID3D12CommandAllocator implemented data
 24 IID_ID3D12CommandList implemented data
 25 IID_ID3D12CommandQueue implemented data

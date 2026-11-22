@@ -420,6 +420,20 @@ pub(crate) fn key_encode(d: &mut Dcc, off: u32, len: u32, size: u32) -> R<()> {
     Ok(())
 }
 
+fn obj_dword(d: &Dcc, off: usize) -> R<u32> {
+    if off + 4 > 0x420 {
+        return Err(Stop::Undef("packer bit-plane loop reads past the codec object after its stack arguments were overwritten"));
+    }
+    Ok(d.g(off))
+}
+
+fn obj_byte(d: &Dcc, off: usize) -> R<u8> {
+    if off >= 0x420 {
+        return Err(Stop::Undef("packer bit-plane loop reads past the codec object after its stack arguments were overwritten"));
+    }
+    Ok(d.o[off])
+}
+
 fn s1(d: &mut Dcc, at: u32, v: u8) -> R<()> {
     if at >= 256 {
         return Err(Stop::Undef("the packed stream overruns the console's 256-byte heap output surface; whether the console then crashes depends on what the heap holds next to it"));
@@ -462,8 +476,8 @@ pub(crate) fn emit(d: &mut Dcc, first: u32, last: u32, size: u32) -> R<()> {
     let mut home = [first, last, size];
     let mut j = first;
     loop {
-        if j >= 4 {
-            return Err(Stop::Undef("packer base loop walks past sector 3 after its stack arguments were overwritten"));
+        if j >= 16 {
+            return Err(Stop::Undef("packer base loop reads past the codec object after its stack arguments were overwritten"));
         }
         let ju = j as usize;
         for i in 0..8u32 {
@@ -499,22 +513,26 @@ pub(crate) fn emit(d: &mut Dcc, first: u32, last: u32, size: u32) -> R<()> {
     }
     let mut j = home[0];
     loop {
-        if j >= 4 {
-            return Err(Stop::Fault("packer bit-plane loop walks past sector 3 after its stack arguments were overwritten and reads outside the codec object"));
-        }
-        let ju = j as usize;
         for i in 0..8u32 {
             let iu = i as usize;
-            if d.g(0x344 + 4 * ju) & (1 << i) != 0 {
+            let sk = obj_dword(d, 0x344 + 4 * j as usize)?;
+            if sk & (1 << i) != 0 {
                 continue;
             }
-            let cnt = d.o[0x304 + 8 * ju + iu] as i32;
+            let cnt = obj_byte(d, 0x304 + 8 * j as usize + iu)? as i32;
             let mut n = 0i32;
             while n < cnt {
-                let base = (iu + ju * 8) * 8;
+                let base = (iu + j as usize * 8) * 8;
                 let mut t = 0u8;
                 for b in 0..8usize {
-                    let src = if b == 0 && d.g(0x3e0 + 4 * ju) & (1 << i) != 0 { d.o[0x160 + 8 * ju + iu] } else { d.s[2][base + b] };
+                    let first_base = b == 0 && obj_dword(d, 0x3e0 + 4 * j as usize)? & (1 << i) != 0;
+                    let src = if first_base {
+                        obj_byte(d, 0x160 + 8 * j as usize + iu)?
+                    } else if base + b < 256 {
+                        d.s[2][base + b]
+                    } else {
+                        return Err(Stop::Undef("packer bit-plane loop reads past the 256-byte surface 2 heap block after its stack arguments were overwritten"));
+                    };
                     if shr8(src, n as u32) & 1 != 0 {
                         t |= 1 << b;
                     }
@@ -524,7 +542,7 @@ pub(crate) fn emit(d: &mut Dcc, first: u32, last: u32, size: u32) -> R<()> {
                 n += 1;
             }
         }
-        j += 1;
+        j = j.wrapping_add(1);
         if j > home[1] {
             break;
         }
@@ -535,7 +553,7 @@ pub(crate) fn emit(d: &mut Dcc, first: u32, last: u32, size: u32) -> R<()> {
     let mut s = home[0];
     loop {
         if s >= 8 {
-            return Err(Stop::Undef("packer size loop writes past the codec object after its stack arguments were overwritten"));
+            return Err(Stop::Undef("packer size loop writes over the codec message pointer at 0x418 after its stack arguments were overwritten"));
         }
         let c = if rem < 0x40 { rem & 0xff } else { 0x40 };
         rem = rem.wrapping_sub(c);

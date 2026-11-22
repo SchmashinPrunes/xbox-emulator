@@ -1095,6 +1095,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xtfremoterun"
+version = "0.1.0"
+dependencies = [
+ "console-sandbox",
+ "xbtp",
+ "xtfcommon",
+ "xtfmsg",
+]
+
+[[package]]
 name = "xvmaudioservice"
 version = "0.1.0"
 dependencies = [

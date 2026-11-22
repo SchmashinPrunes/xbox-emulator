@@ -374,3 +374,21 @@ mod tests {
         assert_eq!(t.join().unwrap(), 0xfeed);
     }
 }
+
+#[cfg(test)]
+mod console_fixed_tests {
+    #[path = "../../../../console-dll/oracle/leaf.rs"]
+    mod leaf;
+
+    #[test]
+    fn fixed_result_dxgix_exports_match_every_console_d3d12_xs() {
+        let rows = [
+            ("DXGIXGetFrameStatistics", super::DXGIXGetFrameStatistics as *const () as usize, 0xffff_ffff, 0x887a_0004),
+            ("DXGIXPresentArray", super::DXGIXPresentArray as *const () as usize, 0xffff_ffff, 0x887a_0004),
+            ("DXGIXSetFrameNotification", super::DXGIXSetFrameNotification as *const () as usize, 0xffff_ffff, 0x887a_0004),
+            ("DXGIXSetVLineNotification", super::DXGIXSetVLineNotification as *const () as usize, 0xffff_ffff, 0x887a_0004),
+        ];
+        let seen = leaf::check_fixed("d3d12_xs.dll", &rows);
+        assert!(seen.len() >= 4, "{seen:?}");
+    }
+}

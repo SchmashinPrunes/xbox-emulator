@@ -1,4 +1,4 @@
-use super::{cstr, data_root, log, put_str, setting, title, Guid, Iface, This, E_FAIL, E_INVALIDARG, S_OK};
+use super::{cstr, data_root, log, put_str, setting, title, xasync, Guid, Iface, This, E_ABORT, E_FAIL, E_INVALIDARG, S_OK};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
@@ -229,17 +229,22 @@ unsafe extern "system" fn pls_get_path(_t: This, size: usize, buf: *mut u8, used
     put_str(&pls_path(), size, buf, used)
 }
 
-unsafe extern "system" fn pls_space_info(_t: This, out: *mut u64) -> i32 {
-    if out.is_null() {
-        return E_INVALIDARG;
-    }
+fn pls_space() -> (u64, u64, u64) {
     let p: Vec<u16> = pls_path().encode_utf16().chain(Some(0)).collect();
     let (mut avail, mut total, mut free) = (0u64, 0u64, 0u64);
-    if GetDiskFreeSpaceExW(p.as_ptr(), &mut avail, &mut total, &mut free) == 0 {
+    if unsafe { GetDiskFreeSpaceExW(p.as_ptr(), &mut avail, &mut total, &mut free) } == 0 {
         avail = 16 << 30;
         free = avail;
         total = avail;
     }
+    (avail, free, total)
+}
+
+unsafe extern "system" fn pls_space_info(_t: This, out: *mut u64) -> i32 {
+    if out.is_null() {
+        return E_INVALIDARG;
+    }
+    let (avail, free, total) = pls_space();
     *out = avail;
     *out.add(1) = free;
     *out.add(2) = 0;
@@ -247,11 +252,34 @@ unsafe extern "system" fn pls_space_info(_t: This, out: *mut u64) -> i32 {
     S_OK
 }
 
+const OP_PLS_PROMPT: &[u8] = b"XPersistentLocalStoragePromptUserForSpaceAsync\0";
+
+pub fn pls_prompt_result(requested: u64, available: u64) -> i32 {
+    if available >= requested { S_OK } else { E_ABORT }
+}
+
+unsafe extern "system" fn pls_prompt_async(_t: This, requested: u64, block: *mut core::ffi::c_void) -> i32 {
+    xasync::run_with(
+        block,
+        OP_PLS_PROMPT,
+        Box::new(move |_c| {
+            let (avail, _, _) = pls_space();
+            let hr = pls_prompt_result(requested, avail);
+            log("XPersistentLocalStoragePromptUserForSpaceAsync", &format!("requested {requested} bytes, available {avail} -> {hr:#010x} (no space-prompt UI on PC)"));
+            xasync::Payload::status(hr)
+        }),
+    )
+}
+
+unsafe extern "system" fn pls_prompt_result_slot(_t: This, block: *mut core::ffi::c_void) -> i32 {
+    xasync::status(block)
+}
+
 pub fn interfaces() -> Vec<Iface> {
     vec![
         Iface { clsid: XSYSTEM, iid: XSYSTEM, name: "XSystem(e349bd1a)", slots: vec![(3, get_console_id as usize), (4, get_sandbox_id as usize)] },
         Iface { clsid: XSYSTEM, iid: XSYSTEM_V2, name: "XSystem(67ce4bfc)", slots: vec![(3, get_console_id as usize), (4, get_sandbox_id as usize), (5, get_app_device_id as usize)] },
-        Iface { clsid: XSYSTEM, iid: XSYSTEM_V3, name: "XSystem(6fd71f09)", slots: vec![(4, get_app_device_id as usize)] },
+        Iface { clsid: XSYSTEM, iid: XSYSTEM_V3, name: "XSystem(6fd71f09)", slots: vec![(3, get_console_id as usize), (4, get_sandbox_id as usize), (5, get_app_device_id as usize)] },
         Iface { clsid: ANALYTICS, iid: ANALYTICS, name: "XSystemAnalytics(b884675d)", slots: vec![(3, get_analytics_info as usize)] },
         Iface { clsid: XGAME, iid: XGAME_V1, name: "XGame(50849859)", slots: vec![(3, get_title_id as usize), (4, launch_new_game as usize)] },
         Iface { clsid: XGAME, iid: XGAME_V2, name: "XGame(2549f142)", slots: vec![(3, get_title_id as usize), (4, launch_new_game as usize)] },
@@ -262,7 +290,7 @@ pub fn interfaces() -> Vec<Iface> {
             clsid: PLS,
             iid: PLS_IID,
             name: "XPersistentLocalStorage(d29411df)",
-            slots: vec![(3, pls_path_size as usize), (4, pls_get_path as usize), (5, pls_space_info as usize)],
+            slots: vec![(3, pls_path_size as usize), (4, pls_get_path as usize), (5, pls_space_info as usize), (6, pls_prompt_async as usize), (7, pls_prompt_result_slot as usize)],
         },
     ]
 }

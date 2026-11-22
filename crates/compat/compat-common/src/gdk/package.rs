@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 pub const CLSID: Guid = Guid::parse("af406016-e850-4aa8-a88d-2f3dcb9dac7e");
 pub const IID_V1: Guid = Guid::parse("be3f3e9f-c4b3-424d-9a95-d1af060559a5");
 pub const IID_V2: Guid = Guid::parse("f92d8712-2b27-4d8a-bf01-11a6f8e3eb42");
+pub const IID_3720: Guid = Guid::parse("3720de07-e8e4-44a3-ad32-b359e8adbe55");
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct ChunkInfo {
@@ -639,6 +640,8 @@ pub fn interfaces() -> Vec<Iface> {
         (17, install_chunks_result as usize),
         (28, enumerate_packages as usize),
     ]);
+    let mut v3 = Vec::new();
+    base(&mut v3);
     let mut v2 = Vec::new();
     base(&mut v2);
     v2.extend([
@@ -655,6 +658,7 @@ pub fn interfaces() -> Vec<Iface> {
     vec![
         Iface { clsid: CLSID, iid: IID_V1, name: "XPackage(be3f3e9f)", slots: v1 },
         Iface { clsid: CLSID, iid: IID_V2, name: "XPackage(f92d8712)", slots: v2 },
+        Iface { clsid: CLSID, iid: IID_3720, name: "XPackage(3720de07)", slots: v3 },
     ]
 }
 

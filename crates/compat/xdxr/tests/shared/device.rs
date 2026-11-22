@@ -19,6 +19,11 @@ const CTX: usize = 0x5eed;
 
 unsafe extern "system" fn debug_strings(info: *mut [usize; 2]) -> i32 {
     let rec = (*info)[0] as *const u32;
+    if *rec == 0xE06D_7363 && *rec.add(6) >= 3 {
+        let obj = *(rec.add(10) as *const *const u32);
+        let hr = if obj.is_null() { 0 } else { *obj };
+        eprintln!("{} threw a C++ exception (object HRESULT {hr:#010x}); the failing d3d12_xs call is logged in {}", CONSOLE.spec.name, std::env::var("TOMBOX_LOG").unwrap_or_default());
+    }
     if *rec == 0x4001_0006 {
         let n = *(rec.add(8) as *const usize);
         let s = *(rec.add(10) as *const *const u8);

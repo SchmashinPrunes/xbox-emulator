@@ -26,6 +26,7 @@ pub const STATUS_BUFFER_TOO_SMALL: i32 = 0xC000_0023u32 as i32;
 pub const STATUS_INSUFFICIENT_RESOURCES: i32 = 0xC000_009Au32 as i32;
 pub const STATUS_CANCELLED: i32 = 0xC000_0120u32 as i32;
 pub const STATUS_ADDRESS_ALREADY_ASSOCIATED: i32 = 0xC000_0184u32 as i32;
+pub const STATUS_NOT_FOUND: i32 = 0xC000_0225u32 as i32;
 pub const STATUS_CONNECTION_INVALID: i32 = 0xC000_0140u32 as i32;
 pub const STATUS_CONNECTION_RESET: i32 = 0xC000_020Du32 as i32;
 pub const STATUS_CONNECTION_REFUSED: i32 = 0xC000_0236u32 as i32;
@@ -48,6 +49,7 @@ extern "system" {
     fn SetEvent(h: usize) -> i32;
     fn ResetEvent(h: usize) -> i32;
     fn GetCurrentThread() -> usize;
+    fn GetCurrentThreadId() -> u32;
     fn GetCurrentProcess() -> usize;
     fn DuplicateHandle(sp: usize, sh: usize, tp: usize, th: *mut usize, access: u32, inherit: i32, opts: u32) -> i32;
     fn CloseHandle(h: usize) -> i32;
@@ -61,6 +63,12 @@ struct Irp {
     thread: usize,
     out: usize,
     out_len: usize,
+    file: usize,
+    tid: u32,
+}
+
+thread_local! {
+    static CURRENT_FILE: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
 impl Irp {
@@ -69,7 +77,7 @@ impl Irp {
         if apc != 0 {
             DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &mut thread, 0, 0, 2);
         }
-        Irp { io: io as usize, event, apc, ctx, thread, out: out as usize, out_len: out_len as usize }
+        Irp { io: io as usize, event, apc, ctx, thread, out: out as usize, out_len: out_len as usize, file: CURRENT_FILE.with(|c| c.get()), tid: GetCurrentThreadId() }
     }
 
     unsafe fn complete(self, status: i32, info: usize) {
@@ -182,15 +190,87 @@ fn compare_object_handles() -> Option<CompareFn> {
     (p != 0).then(|| unsafe { core::mem::transmute::<usize, CompareFn>(p) })
 }
 
-pub fn is_device(h: usize) -> bool {
+pub fn device_of(h: usize) -> Option<usize> {
     if h == 0 || h == usize::MAX {
-        return false;
+        return None;
     }
     let privs: Vec<usize> = fabric().handles.iter().copied().collect();
-    match compare_object_handles() {
-        Some(cmp) => privs.iter().any(|&p| unsafe { cmp(h, p) } != 0),
-        None => false,
+    let cmp = compare_object_handles()?;
+    privs.into_iter().find(|&p| unsafe { cmp(h, p) } != 0)
+}
+
+pub fn is_device(h: usize) -> bool {
+    device_of(h).is_some()
+}
+
+fn cancel(file: usize, io: Option<usize>, tid: Option<u32>) -> usize {
+    let mut f = fabric();
+    let hit = |i: &Irp| i.file == file && io.is_none_or(|x| x == i.io) && tid.is_none_or(|t| t == i.tid);
+    let mut done = Vec::new();
+    for e in f.endpoints.values_mut() {
+        let (c, keep): (Vec<Irp>, Vec<Irp>) = e.accepts.drain(..).partition(|i| hit(i));
+        e.accepts = keep;
+        done.extend(c);
+        let (c, keep): (VecDeque<Irp>, VecDeque<Irp>) = e.receives.drain(..).partition(|i| hit(i));
+        e.receives = keep;
+        done.extend(c);
     }
+    drop(f);
+    let n = done.len();
+    for irp in done {
+        unsafe { irp.complete(STATUS_CANCELLED, 0) };
+    }
+    n
+}
+
+unsafe fn put_iosb(io: *mut usize, st: i32) {
+    if !io.is_null() {
+        io.write_unaligned(st as u32 as usize);
+        io.add(1).write_unaligned(0);
+    }
+}
+
+#[link(name = "ntdll")]
+extern "system" {
+    fn NtCancelIoFile(h: usize, io: *mut usize) -> i32;
+    fn NtCancelIoFileEx(h: usize, req: *mut usize, io: *mut usize) -> i32;
+}
+
+#[link(name = "kernel32")]
+extern "system" {
+    fn CancelIo(h: usize) -> i32;
+    fn CancelIoEx(h: usize, ov: *mut c_void) -> i32;
+}
+
+pub unsafe extern "system" fn nt_cancel_io_file(h: usize, io: *mut usize) -> i32 {
+    let Some(file) = device_of(h) else { return NtCancelIoFile(h, io) };
+    cancel(file, None, Some(GetCurrentThreadId()));
+    put_iosb(io, STATUS_SUCCESS);
+    STATUS_SUCCESS
+}
+
+pub unsafe extern "system" fn nt_cancel_io_file_ex(h: usize, req: *mut usize, io: *mut usize) -> i32 {
+    let Some(file) = device_of(h) else { return NtCancelIoFileEx(h, req, io) };
+    if cancel(file, (!req.is_null()).then_some(req as usize), None) == 0 {
+        return STATUS_NOT_FOUND;
+    }
+    put_iosb(io, STATUS_SUCCESS);
+    STATUS_SUCCESS
+}
+
+pub unsafe extern "system" fn cancel_io(h: usize) -> i32 {
+    let Some(file) = device_of(h) else { return CancelIo(h) };
+    cancel(file, None, Some(GetCurrentThreadId()));
+    1
+}
+
+pub unsafe extern "system" fn cancel_io_ex(h: usize, ov: *mut c_void) -> i32 {
+    let Some(file) = device_of(h) else { return CancelIoEx(h, ov) };
+    if cancel(file, (!ov.is_null()).then_some(ov as usize), None) == 0 {
+        SetLastError(1168);
+        return 0;
+    }
+    1
 }
 
 #[link(name = "ntdll")]
@@ -226,11 +306,21 @@ pub fn device_handles() -> usize {
 fn deliver(f: &mut Fabric, from: u64, data: &[u8]) -> i32 {
     let Some(peer) = f.endpoints.get(&from).and_then(|e| e.connected.then_some(e.peer).flatten()) else { return STATUS_CONNECTION_INVALID };
     let Some(p) = f.endpoints.get_mut(&peer) else { return STATUS_SUCCESS };
+    let gamecore = p.host && p.vm == HOST_VM && p.service == crate::claims::launch_instance();
     if p.host {
-        compat_common::record_raw("xvcmgmt", "host", &format!("queue {from} sent {} bytes to emulated host endpoint {peer}; the host-side GameCore protocol has no console source, bytes are held for host_take_received", data.len()));
+        compat_common::record_raw("xvcmgmt", "host", &format!("queue {from} sent {} bytes to emulated host endpoint {peer}", data.len()));
     }
     p.rx.extend(data.iter().copied());
     pump(p);
+    if gamecore {
+        let reply = crate::gchost::on_bytes(peer, data);
+        if !reply.is_empty() {
+            if let Some(g) = f.endpoints.get_mut(&from) {
+                g.rx.extend(reply);
+                pump(g);
+            }
+        }
+    }
     STATUS_SUCCESS
 }
 
@@ -256,6 +346,12 @@ fn pump(e: &mut Endpoint) {
 
 fn close(f: &mut Fabric, id: u64, graceful: bool) {
     let Some(mut e) = f.endpoints.remove(&id) else { return };
+    if e.peer.is_some() {
+        crate::gchost::forget(id);
+        if let Some(p) = e.peer {
+            crate::gchost::forget(p);
+        }
+    }
     if e.listening {
         f.listeners.retain(|_, v| *v != id);
     }
@@ -362,7 +458,7 @@ unsafe fn id_of(inb: *const u8, inl: u32) -> Option<u64> {
 }
 
 unsafe fn finish(irp: Irp, st: i32, info: usize) -> i32 {
-    if st >= 0 {
+    if st >= 0 || (st as u32) >> 30 == 2 {
         irp.complete(st, info);
     } else if irp.thread != 0 {
         CloseHandle(irp.thread);
@@ -494,6 +590,11 @@ pub unsafe fn ioctl(io: *mut usize, event: usize, apc: usize, ctx: usize, code: 
             drop(f);
             finish(irp, st, 0)
         }
+        _ if crate::xvcsys::known(code) => {
+            let (st, info) = crate::xvcsys::ioctl(code, inb, inl, outb, outl);
+            compat_common::record_raw("xvcmgmt", "DeviceIoControl", &format!("ioctl {code:#x} (in {inl}, out {outl}) -> {st:#010x} info {info}"));
+            finish(irp, st, info)
+        }
         _ => {
             compat_common::record_raw("xvcmgmt", "DeviceIoControl", &format!("ioctl {code:#x} (in {inl}, out {outl}) is not emulated; STATUS_INVALID_DEVICE_REQUEST"));
             finish(irp, STATUS_INVALID_DEVICE_REQUEST, 0)
@@ -554,7 +655,8 @@ pub unsafe extern "system" fn nt_create_file(h: *mut usize, access: u32, oa: *co
 }
 
 pub unsafe extern "system" fn nt_device_io_control_file(h: usize, ev: usize, apc: usize, ctx: usize, io: *mut usize, code: u32, inb: *const u8, inl: u32, outb: *mut u8, outl: u32) -> i32 {
-    if is_device(h) {
+    if let Some(file) = device_of(h) {
+        CURRENT_FILE.with(|c| c.set(file));
         return ioctl(io, ev, apc, ctx, code, inb, inl, outb, outl);
     }
     NtDeviceIoControlFile(h, ev, apc, ctx, io, code, inb, inl, outb, outl)
@@ -579,9 +681,10 @@ pub unsafe extern "system" fn close_handle(h: usize) -> i32 {
 }
 
 pub unsafe extern "system" fn device_io_control(h: usize, code: u32, inb: *const u8, inl: u32, outb: *mut u8, outl: u32, ret: *mut u32, ov: *mut c_void) -> i32 {
-    if !is_device(h) {
+    let Some(file) = device_of(h) else {
         return DeviceIoControl(h, code, inb, inl, outb, outl, ret, ov);
-    }
+    };
+    CURRENT_FILE.with(|c| c.set(file));
     let mut io = [0usize; 2];
     let (iop, ev, own) = if ov.is_null() {
         (io.as_mut_ptr(), CreateEventW(core::ptr::null(), 1, 0, core::ptr::null()), true)

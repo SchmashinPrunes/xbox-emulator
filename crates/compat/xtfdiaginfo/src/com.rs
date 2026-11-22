@@ -136,6 +136,11 @@ pub unsafe fn arr_append_string(a: Obj, s: *const u16) -> HRESULT {
     f(a, s)
 }
 
+pub unsafe fn arr_append_object(a: Obj, o: Obj) -> HRESULT {
+    let f: unsafe extern "system" fn(Obj, Obj) -> HRESULT = transmute(slot(a, 5));
+    f(a, o)
+}
+
 pub unsafe fn msg_get_json_body(m: Obj, count: *mut u32, body: *mut *mut u8) -> HRESULT {
     let f: unsafe extern "system" fn(Obj, *mut u32, *mut *mut u8) -> HRESULT = transmute(slot(m, 3));
     f(m, count, body)

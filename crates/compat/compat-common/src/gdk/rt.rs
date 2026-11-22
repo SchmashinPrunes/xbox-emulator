@@ -13,6 +13,7 @@ type AsyncWork = unsafe extern "system" fn(*mut c_void) -> i32;
 type Provider = unsafe extern "system" fn(u32, *const ProviderData) -> i32;
 type Completion = unsafe extern "system" fn(*mut c_void);
 type TerminatedCb = unsafe extern "system" fn(*mut c_void);
+type MonitorCb = unsafe extern "system" fn(*mut c_void, usize, u32);
 
 pub const MANUAL: u32 = 0;
 pub const THREAD_POOL: u32 = 1;
@@ -73,6 +74,15 @@ fn pool() -> &'static Pool {
     p
 }
 
+#[derive(Clone, Copy)]
+struct Monitor {
+    token: u64,
+    queue: usize,
+    ctx: usize,
+    cb: MonitorCb,
+    port: u32,
+}
+
 pub struct Port {
     mode: u32,
     items: Mutex<VecDeque<Tagged>>,
@@ -80,11 +90,12 @@ pub struct Port {
     terminated: AtomicBool,
     serial_started: AtomicBool,
     users: AtomicUsize,
+    monitors: Mutex<Vec<Monitor>>,
 }
 
 impl Port {
     fn new(mode: u32) -> Arc<Port> {
-        Arc::new(Port { mode, items: Mutex::new(VecDeque::new()), cv: Condvar::new(), terminated: AtomicBool::new(false), serial_started: AtomicBool::new(false), users: AtomicUsize::new(0) })
+        Arc::new(Port { mode, items: Mutex::new(VecDeque::new()), cv: Condvar::new(), terminated: AtomicBool::new(false), serial_started: AtomicBool::new(false), users: AtomicUsize::new(0), monitors: Mutex::new(Vec::new()) })
     }
 
     #[cfg(test)]
@@ -92,11 +103,25 @@ impl Port {
         self.submit_tagged(0, job)
     }
 
+    fn notify(&self) {
+        let m: Vec<Monitor> = self.monitors.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        for x in m {
+            unsafe { (x.cb)(x.ctx as *mut c_void, x.queue, x.port) };
+        }
+    }
+
     fn submit_tagged(self: &Arc<Port>, tag: usize, job: Job) {
         if self.terminated.load(Ordering::Acquire) {
             job(true);
             return;
         }
+        self.enqueue(tag, job);
+        if self.mode != IMMEDIATE {
+            self.notify();
+        }
+    }
+
+    fn enqueue(self: &Arc<Port>, tag: usize, job: Job) {
         match self.mode {
             IMMEDIATE => job(false),
             THREAD_POOL => {
@@ -147,13 +172,17 @@ impl Port {
                 let p = pool();
                 p.q.lock().unwrap_or_else(|e| e.into_inner()).push_back((0, job));
                 p.cv.notify_one();
+                self.notify();
             }
             _ => {
                 self.items.lock().unwrap_or_else(|e| e.into_inner()).push_back((0, job));
                 self.cv.notify_all();
                 if self.mode == SERIALIZED {
                     self.ensure_serial();
-                } else if self.users.load(Ordering::Acquire) == 0 {
+                    self.notify();
+                } else if self.users.load(Ordering::Acquire) != 0 {
+                    self.notify();
+                } else {
                     let drained: Vec<Job> = self.items.lock().unwrap_or_else(|e| e.into_inner()).drain(..).map(|(_, j)| j).collect();
                     for j in drained {
                         j(true);
@@ -292,15 +321,26 @@ fn new_queue(work: Arc<Port>, completion: Arc<Port>, process: bool, owns: bool) 
     Box::into_raw(Box::new(Queue { magic: QMAGIC, work, completion, refs: AtomicUsize::new(1), process, owns, ended: Arc::new(AtomicBool::new(false)), live: Arc::new(Live::default()) })) as usize
 }
 
-fn process_queue() -> usize {
+fn default_process_queue() -> usize {
     static P: AtomicUsize = AtomicUsize::new(0);
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| P.store(new_queue(Port::new(THREAD_POOL), Port::new(THREAD_POOL), true, true), Ordering::Release));
-    let o = OVERRIDE.load(Ordering::Acquire);
-    if o != 0 { o } else { P.load(Ordering::Acquire) }
+    P.load(Ordering::Acquire)
 }
 
-static OVERRIDE: AtomicUsize = AtomicUsize::new(0);
+fn process_queue() -> usize {
+    match OVERRIDE.load(Ordering::Acquire) {
+        DEFAULT_PROCESS => default_process_queue(),
+        o => o,
+    }
+}
+
+const DEFAULT_PROCESS: usize = usize::MAX;
+static OVERRIDE: AtomicUsize = AtomicUsize::new(DEFAULT_PROCESS);
+
+pub fn process_queue_available() -> bool {
+    !active() || process_queue() != 0
+}
 
 unsafe fn queue<'a>(h: usize) -> Option<&'a Queue> {
     let h = if h == 0 { process_queue() } else { h };
@@ -588,11 +628,66 @@ unsafe extern "system" fn q_get_process(_t: This, out: *mut usize) -> bool {
         return false;
     }
     let p = process_queue();
-    if let Some(q) = queue(p) {
-        q.refs.fetch_add(1, Ordering::AcqRel);
+    match queue(p).filter(|_| p != 0) {
+        Some(q) => {
+            q.refs.fetch_add(1, Ordering::AcqRel);
+            *out = p;
+            true
+        }
+        None => {
+            *out = 0;
+            false
+        }
     }
-    *out = p;
-    true
+}
+
+unsafe extern "system" fn q_set_process(_t: This, q: usize) {
+    let next = if q == 0 {
+        0
+    } else {
+        match queue(q) {
+            Some(qq) => {
+                qq.refs.fetch_add(1, Ordering::AcqRel);
+                q
+            }
+            None => return,
+        }
+    };
+    let prev = OVERRIDE.swap(next, Ordering::AcqRel);
+    if prev != 0 && prev != DEFAULT_PROCESS {
+        q_close(_t, prev);
+    }
+}
+
+pub const E_POINTER: i32 = 0x8000_4003u32 as i32;
+pub const E_OUTOFMEMORY: i32 = 0x8007_000Eu32 as i32;
+const MONITOR_MAX: usize = 32;
+static NEXT_MONITOR: AtomicUsize = AtomicUsize::new(1);
+
+unsafe extern "system" fn q_register_monitor(_t: This, q: usize, ctx: *mut c_void, cb: Option<MonitorCb>, token: *mut u64) -> i32 {
+    let Some(qq) = queue(q) else { return E_INVALIDARG };
+    let Some(cb) = cb else { return E_POINTER };
+    if token.is_null() {
+        return E_POINTER;
+    }
+    let h = resolve(q);
+    let ports = [(&qq.work, 0u32), (&qq.completion, 1u32)];
+    if ports.iter().any(|(p, _)| p.monitors.lock().unwrap_or_else(|e| e.into_inner()).len() >= MONITOR_MAX) {
+        return E_OUTOFMEMORY;
+    }
+    let t = NEXT_MONITOR.fetch_add(1, Ordering::AcqRel) as u64;
+    for (p, port) in ports {
+        p.monitors.lock().unwrap_or_else(|e| e.into_inner()).push(Monitor { token: t, queue: h, ctx: ctx as usize, cb, port });
+    }
+    *token = t;
+    S_OK
+}
+
+unsafe extern "system" fn q_unregister_monitor(_t: This, q: usize, token: u64) {
+    let Some(qq) = queue(q) else { return };
+    for p in [&qq.work, &qq.completion] {
+        p.monitors.lock().unwrap_or_else(|e| e.into_inner()).retain(|m| m.token != token);
+    }
 }
 
 thread_local! {
@@ -917,7 +1012,10 @@ pub fn interfaces() -> Vec<Iface> {
             (18, q_submit as usize),
             (19, q_submit_delayed as usize),
             (22, q_terminate as usize),
+            (23, q_register_monitor as usize),
+            (24, q_unregister_monitor as usize),
             (25, q_get_process as usize),
+            (26, q_set_process as usize),
             (27, thread_set_time_sensitive as usize),
             (29, thread_assert_not_time_sensitive as usize),
             (30, thread_is_time_sensitive as usize),
