@@ -3134,6 +3134,9 @@
   "d3d12_x.dll": [
    "D3D12CreateRootSignatureDeserializer",
    "D3D12CreateVersionedRootSignatureDeserializer"
+  ],
+  "gamecoreclient.dll": [
+   "DllGetClassObject"
   ]
  }
 }
