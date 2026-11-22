@@ -317,6 +317,19 @@ pub fn host_of_console(console: &str) -> Option<PathBuf> {
     console_sandbox::fs::resolve(console).map(|(_, h)| h)
 }
 
+pub const ERROR_INVALID_NAME: u32 = 123;
+
+pub fn dump_host_path(console: &str) -> Option<PathBuf> {
+    let host = host_of_console(console)?;
+    let root = console_sandbox::fs::drive_dir('D');
+    let rel = host.strip_prefix(&root).ok()?;
+    if rel.components().all(|c| matches!(c, std::path::Component::Normal(_))) && rel.components().count() > 0 {
+        Some(host)
+    } else {
+        None
+    }
+}
+
 unsafe fn open_console_process(access: u32, pid: u32) -> HANDLE {
     if pid != GetCurrentProcessId() {
         SetLastError(ERROR_INVALID_PARAMETER);
@@ -404,7 +417,12 @@ pub unsafe extern "system" fn generate_stack_dump_handler(_session: usize, reque
         };
         ensure_console_drives();
         let wname = w(&name);
-        file = console_sandbox::fs::create_file_w(wname.as_ptr(), 0xC000_0000, 0, core::ptr::null(), 2, 0x80, 0) as HANDLE;
+        file = if dump_host_path(&name).is_some() {
+            console_sandbox::fs::create_file_w(wname.as_ptr(), 0xC000_0000, 0, core::ptr::null(), 2, 0x80, 0) as HANDLE
+        } else {
+            SetLastError(ERROR_INVALID_NAME);
+            INVALID_HANDLE_VALUE
+        };
         if file == INVALID_HANDLE_VALUE {
             let hr = last_error_hr();
             if hr < 0 {

@@ -673,11 +673,45 @@ fn screenshot_marker_failures_report_unsuccessful() {
             assert_eq!(j.get("Successful").num(), 0.0);
             assert!(result_code(&j) < 0);
         }
+        let (hr, text) = call(mark_screenshot_taken_handler, Some(r#"{"SourceNameInitiatingScreenshot":"中"}"#));
+        assert_eq!(hr, S_OK);
+        let j = parse(&text);
+        assert_eq!(j.keys(), ["Successful"]);
+        assert_eq!(j.get("Successful").num(), 1.0);
+        assert_eq!(std::fs::read(source_file()).unwrap(), b"?");
         let (hr, text) = call(is_video_impacted_by_screenshots_handler, Some("{}"));
         assert_eq!(hr, S_OK);
         assert_eq!(*parse(&text).get("XtfOperationError"), operation_error("videoimpactedbyscreenshot.cpp", E_JSON_NOT_FOUND, 87));
         let _ = std::fs::remove_file(source_file());
     }
+}
+
+#[test]
+fn generate_stack_dump_never_leaves_the_sandbox_d_drive() {
+    let _g = guard();
+    assert!(dump_host_path(r"D:\title_1-1-1-1-1-mini.dmp").unwrap().starts_with(dump_dir()));
+    assert_eq!(dump_host_path(r"D:\a\C:\xtfcc_escape_1.dmp"), None);
+    assert_eq!(dump_host_path(r"D:\"), None);
+    let escapes = |dir: &str| std::path::Path::new(dir).read_dir().map(|d| d.filter_map(|e| e.ok()).any(|e| e.file_name().to_string_lossy().starts_with("xtfcc_escape"))).unwrap_or(false);
+    unsafe {
+        for image in [r"a\C:\Users\Public\xtfcc_escape", r"C:\xtfcc_escape", r"..\..\xtfcc_escape"] {
+            let req = format!(r#"{{"ProcessId":"{}","DumpType":"0","ImageName":"{}"}}"#, std::process::id(), image.replace('\\', "\\\\"));
+            let (hr, text) = call(generate_stack_dump_handler, Some(&req));
+            let j = parse(&text);
+            if hr == S_OK {
+                assert_eq!(j.get("Successful").num(), 1.0, "{text}");
+                let host = host_of_console(j.get("FilePath").str()).unwrap();
+                assert!(host.starts_with(dump_dir()), "{host:?}");
+                std::fs::remove_file(host).unwrap();
+            } else {
+                let e = hr_from_win32(ERROR_INVALID_NAME);
+                assert_eq!(hr, e, "{image} {text}");
+                assert_eq!(*j.get("XtfOperationError"), operation_error("crashdump.cpp", e, 636));
+            }
+        }
+    }
+    assert!(!escapes(r"C:\Users\Public"));
+    assert!(!escapes(r"C:\"));
 }
 
 #[test]

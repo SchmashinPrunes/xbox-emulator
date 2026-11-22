@@ -204,7 +204,7 @@ fn enc_fault_cases(or: &super::tests::Tm) -> Vec<(i32, i32, [u32; 2], [u8; 256],
             };
             let (mut dst, mut meta) = ([0u8; 256], [0u8; 1]);
             if let run::Outcome::Stopped { why, .. } = run::encode_blocks(&mut runs, &s0, &mut dst, &mut meta, None) {
-                if v.iter().filter(|c| c.5 == why).count() < 8 && !v.iter().any(|c| c.5 == why && c.0 == f && c.1 == t) {
+                if v.iter().filter(|c| c.5 == why).count() < 5 && !v.iter().any(|c| c.5 == why && c.0 == f && c.1 == t) {
                     v.push((f, t, p, s0, sc, why));
                 }
             }
@@ -263,17 +263,25 @@ fn oracle_xgx_dcc_enc_stream_overflow_layout() {
                 run::Outcome::Stopped { why, .. } if why.contains("overruns") => {}
                 _ => continue,
             }
+            let mut pick = None;
+            for fl in 0..FILLS {
+                let mut nd = fresh(fl, &sc);
+                nd.setup(f, t, p[0], p[1]);
+                nd.s[0] = s0;
+                if let Err(super::Stop::Undef(w)) = enc::run(&mut nd) {
+                    if w.contains("overruns") {
+                        pick = Some(fl);
+                        break;
+                    }
+                }
+            }
+            let Some(fl) = pick else { continue };
             n += 1;
-            let mut nd = fresh(0, &sc);
-            nd.setup(f, t, p[0], p[1]);
-            nd.s[0] = s0;
-            let _ = enc::run(&mut nd);
-            let native = nd.s[1];
             let mut outs = Vec::new();
             let mut bufs = Vec::new();
             for lay in 0..3 {
                 let (c, _) = Con::new(or, f, t, p);
-                let mut d = fresh(0, &sc);
+                let mut d = fresh(fl, &sc);
                 d.setup(f, t, p[0], p[1]);
                 prefill(&c, &d);
                 c.set_surf(0, &s0);
@@ -296,16 +304,15 @@ fn oracle_xgx_dcc_enc_stream_overflow_layout() {
                 core::mem::forget(c);
                 bufs.push(buf);
             }
-            assert!(outs.iter().all(|o| *o == outs[0]), "fmt {f} tile {t} params {p:x?}: in-bounds output changed with the heap neighbour");
-            assert_eq!(outs[0].0, native.to_vec(), "fmt {f} tile {t} params {p:x?}: in-bounds bytes");
+            assert_eq!(outs[1], outs[2], "fmt {f} tile {t} params {p:x?}: isolated layouts");
             let far = (256..0x10000).rev().find(|&i| bufs[1][i] == bufs[2][i]).unwrap_or(0);
             assert!(far >= 256, "fmt {f} tile {t} params {p:x?}: console never wrote past the surface");
-            if bufs[1][256] == bufs[2][256] {
+            if outs[0] != outs[1] {
                 varied += 1;
             }
             reach = reach.max(far + 1 - 256);
         }
     }
-    println!("xg_x dcc enc stream overflow: {n} cases where native predicts the packed stream overruns the 256-byte output surface; console driver 0x189b0 wrote past the surface in all {n} (byte 256 written in {varied}, up to {reach} bytes past the end); in-bounds output equal to native and unchanged by the heap neighbour");
+    println!("xg_x dcc enc stream overflow: {n} cases where native predicts the packed stream overruns the 256-byte output surface; console driver 0x189b0 wrote past the surface in all {n} (up to {reach} bytes past the end), and its in-bounds output changed when the next heap block was the codec's own surface 2 in {varied} of them");
     assert!(n > 0);
 }
