@@ -251,6 +251,116 @@ pub fn install_cmdlist(vt: &[AtomicUsize]) {
     }
 }
 
+pub const DEV_SLOT_127: usize = 127;
+pub const DEV_SLOT_133: usize = 133;
+pub const BARRIER_LAYOUT_UNDEFINED: u32 = 0xffff_ffff;
+const E_NOTIMPL: i32 = 0x8000_4001u32 as i32;
+
+pub fn layout_state(layout: u32) -> u32 {
+    match layout {
+        1 | 19 | 25 => 0xac3,
+        2 => 0x4,
+        3 | 20 | 26 => 0x8,
+        4 => 0x10,
+        5 => 0x20,
+        6 | 21 | 27 => 0xc0,
+        7 | 22 | 28 => 0x800,
+        8 | 23 | 29 => 0x400,
+        9 => 0x2000,
+        10 => 0x1000,
+        11 => 0x100_0000,
+        _ => 0,
+    }
+}
+
+type Guid = crate::device_wrap::Guid;
+type Device = crate::device_wrap::DeviceWrapper;
+type PlacedFn = unsafe extern "system" fn(*mut Device, u64, *const u8, u32, *const c_void, *const Guid, *mut *mut c_void) -> i32;
+type CommittedFn = unsafe extern "system" fn(*mut Device, *const u32, u32, *const u32, u32, *const c_void, *const Guid, *mut *mut c_void) -> i32;
+type PrevPlaced = unsafe extern "system" fn(*mut c_void, u64, *const u8, u32, *const c_void, *const Guid, *mut *mut c_void) -> i32;
+type PrevCommitted = unsafe extern "system" fn(*mut c_void, *const u32, u32, *const u32, u32, *const c_void, *mut c_void, u32, *const u32, *const Guid, *mut *mut c_void) -> i32;
+
+static PREV_DEV: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+static DEV133_LOG: AtomicUsize = AtomicUsize::new(0);
+static DEV127_LOG: AtomicUsize = AtomicUsize::new(0);
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn route133(
+    layout: ListLayout, prev: usize, create: PlacedFn, this: *mut c_void, va: u64, pdesc: *const u8, barrier_layout: u32,
+    pclear: *const c_void, riid: *const Guid, ppv: *mut *mut c_void, pc: usize,
+) -> i32 {
+    match layout {
+        ListLayout::Gxdk2504 => {
+            let state = layout_state(barrier_layout);
+            let hr = unsafe { create(this as *mut Device, va, pdesc, state, pclear, riid, ppv) };
+            if DEV133_LOG.fetch_add(1, Ordering::Relaxed) < 8 {
+                let dim = if pdesc.is_null() { 0 } else { unsafe { core::ptr::read_unaligned(pdesc as *const u32) } };
+                record("d3d12_xs", "cl_edition", &format!("device slot 133 CreatePlacedResourceX (resource desc 1, barrier layout) va={va:#x} dim={dim} layout={barrier_layout:#x} -> state {state:#x} from {}: hr={hr:#010x}", location(pc)));
+            }
+            hr
+        }
+        ListLayout::Gxdk2021 => {
+            if prev == 0 {
+                return E_NOTIMPL;
+            }
+            let f: PrevPlaced = unsafe { core::mem::transmute(prev) };
+            unsafe { f(this, va, pdesc, barrier_layout, pclear, riid, ppv) }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn route127(
+    layout: ListLayout, prev: usize, create: CommittedFn, this: *mut c_void, pheap: *const u32, heap_flags: u32, pdesc: *const u32,
+    barrier_layout: u32, pclear: *const c_void, protected: *mut c_void, castable_count: u32, castable: *const u32,
+    riid: *const Guid, ppv: *mut *mut c_void, pc: usize,
+) -> i32 {
+    match layout {
+        ListLayout::Gxdk2504 => {
+            let state = layout_state(barrier_layout);
+            let hr = unsafe { create(this as *mut Device, pheap, heap_flags, pdesc, state, pclear, riid, ppv) };
+            let extra = !protected.is_null() || castable_count != 0;
+            if DEV127_LOG.fetch_add(1, Ordering::Relaxed) < 8 || extra {
+                let dim = if pdesc.is_null() { 0 } else { unsafe { core::ptr::read_unaligned(pdesc) } };
+                let dropped = if extra { format!("; protected session {protected:p} and {castable_count} castable formats ({castable:p}) not applied on the legacy path") } else { String::new() };
+                record("d3d12_xs", "cl_edition", &format!("device slot 127 CreateCommittedResource3 heap flags {heap_flags:#x} dim={dim} layout={barrier_layout:#x} -> state {state:#x} from {}: hr={hr:#010x}{dropped}", location(pc)));
+            }
+            hr
+        }
+        ListLayout::Gxdk2021 => {
+            if prev == 0 {
+                return E_NOTIMPL;
+            }
+            let f: PrevCommitted = unsafe { core::mem::transmute(prev) };
+            unsafe { f(this, pheap, heap_flags, pdesc, barrier_layout, pclear, protected, castable_count, castable, riid, ppv) }
+        }
+    }
+}
+
+#[inline(never)]
+pub unsafe extern "system" fn dev133(this: *mut c_void, va: u64, pdesc: *const u8, barrier_layout: u32, pclear: *const c_void, riid: *const Guid, ppv: *mut *mut c_void) -> i32 {
+    let pc = caller_pc();
+    unsafe { route133(layout_at(pc), PREV_DEV[1].load(Ordering::Relaxed), crate::device_wrap::create_placed_resource_x, this, va, pdesc, barrier_layout, pclear, riid, ppv, pc) }
+}
+
+#[inline(never)]
+pub unsafe extern "system" fn dev127(
+    this: *mut c_void, pheap: *const u32, heap_flags: u32, pdesc: *const u32, barrier_layout: u32, pclear: *const c_void,
+    protected: *mut c_void, castable_count: u32, castable: *const u32, riid: *const Guid, ppv: *mut *mut c_void,
+) -> i32 {
+    let pc = caller_pc();
+    unsafe { route127(layout_at(pc), PREV_DEV[0].load(Ordering::Relaxed), crate::device_wrap::create_committed_resource, this, pheap, heap_flags, pdesc, barrier_layout, pclear, protected, castable_count, castable, riid, ppv, pc) }
+}
+
+pub fn install_device(v: &mut [usize]) {
+    for (i, (slot, f)) in [(DEV_SLOT_127, dev127 as *const () as usize), (DEV_SLOT_133, dev133 as *const () as usize)].into_iter().enumerate() {
+        if v.len() > slot && v[slot] != f {
+            PREV_DEV[i].store(v[slot], Ordering::Relaxed);
+            v[slot] = f;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,5 +541,98 @@ mod tests {
         let short: Vec<AtomicUsize> = (0..100).map(AtomicUsize::new).collect();
         install_cmdlist(&short);
         assert_eq!(short[99].load(Ordering::Relaxed), 99);
+    }
+
+    static PLACED_ARGS: AtomicUsize = AtomicUsize::new(0);
+    static COMMITTED_ARGS: AtomicUsize = AtomicUsize::new(0);
+    static PREV_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe extern "system" fn fake_place(_d: *mut Device, va: u64, _desc: *const u8, state: u32, _c: *const c_void, _r: *const Guid, _p: *mut *mut c_void) -> i32 {
+        PLACED_ARGS.store(((va as usize) << 16) | state as usize, Ordering::Relaxed);
+        0
+    }
+
+    unsafe extern "system" fn fake_commit(_d: *mut Device, _h: *const u32, flags: u32, _desc: *const u32, state: u32, _c: *const c_void, _r: *const Guid, _p: *mut *mut c_void) -> i32 {
+        COMMITTED_ARGS.store(((flags as usize) << 16) | state as usize, Ordering::Relaxed);
+        0
+    }
+
+    unsafe extern "system" fn prev_place(_t: *mut c_void, _va: u64, _d: *const u8, layout: u32, _c: *const c_void, _r: *const Guid, _p: *mut *mut c_void) -> i32 {
+        PREV_CALLS.store(0x100 | layout as usize, Ordering::Relaxed);
+        7
+    }
+
+    unsafe extern "system" fn prev_commit(_t: *mut c_void, _h: *const u32, _f: u32, _d: *const u32, layout: u32, _c: *const c_void, _p: *mut c_void, _n: u32, _cf: *const u32, _r: *const Guid, _o: *mut *mut c_void) -> i32 {
+        PREV_CALLS.store(0x200 | layout as usize, Ordering::Relaxed);
+        9
+    }
+
+    #[test]
+    fn barrier_layouts_map_to_the_matching_resource_states() {
+        assert_eq!(layout_state(BARRIER_LAYOUT_UNDEFINED), 0);
+        assert_eq!(layout_state(0), 0);
+        assert_eq!(layout_state(1), 0xac3);
+        assert_eq!(layout_state(2), 0x4);
+        assert_eq!(layout_state(3), 0x8);
+        assert_eq!(layout_state(26), 0x8);
+        assert_eq!(layout_state(4), 0x10);
+        assert_eq!(layout_state(5), 0x20);
+        assert_eq!(layout_state(6), 0xc0);
+        assert_eq!(layout_state(27), 0xc0);
+        assert_eq!(layout_state(7), 0x800);
+        assert_eq!(layout_state(28), 0x800);
+        assert_eq!(layout_state(23), 0x400);
+        assert_eq!(layout_state(9), 0x2000);
+        assert_eq!(layout_state(10), 0x1000);
+        assert_eq!(layout_state(11), 0x100_0000);
+        assert_eq!(layout_state(18), 0);
+        assert_eq!(layout_state(30), 0);
+    }
+
+    #[test]
+    fn placed_and_committed_creation_convert_the_layout_on_2504_callers_only() {
+        let pc = layout_for as *const () as usize;
+        let null = core::ptr::null_mut::<c_void>();
+        let none = core::ptr::null::<Guid>();
+        let hr = unsafe { route133(ListLayout::Gxdk2504, 0, fake_place, null, 0x40, core::ptr::null(), 3, core::ptr::null(), none, core::ptr::null_mut(), pc) };
+        assert_eq!(hr, 0);
+        assert_eq!(PLACED_ARGS.load(Ordering::Relaxed), (0x40 << 16) | 0x8);
+        let hr = unsafe { route127(ListLayout::Gxdk2504, 0, fake_commit, null, core::ptr::null(), 0x4000, core::ptr::null(), 8, core::ptr::null(), null, 0, core::ptr::null(), none, core::ptr::null_mut(), pc) };
+        assert_eq!(hr, 0);
+        assert_eq!(COMMITTED_ARGS.load(Ordering::Relaxed), (0x4000 << 16) | 0x400);
+
+        let hr = unsafe { route133(ListLayout::Gxdk2021, prev_place as *const () as usize, fake_place, null, 0x99, core::ptr::null(), 5, core::ptr::null(), none, core::ptr::null_mut(), pc) };
+        assert_eq!(hr, 7);
+        assert_eq!(PREV_CALLS.load(Ordering::Relaxed), 0x105);
+        assert_eq!(PLACED_ARGS.load(Ordering::Relaxed), (0x40 << 16) | 0x8);
+        let hr = unsafe { route127(ListLayout::Gxdk2021, prev_commit as *const () as usize, fake_commit, null, core::ptr::null(), 0x1, core::ptr::null(), 6, core::ptr::null(), null, 0, core::ptr::null(), none, core::ptr::null_mut(), pc) };
+        assert_eq!(hr, 9);
+        assert_eq!(PREV_CALLS.load(Ordering::Relaxed), 0x206);
+        assert_eq!(COMMITTED_ARGS.load(Ordering::Relaxed), (0x4000 << 16) | 0x400);
+    }
+
+    #[test]
+    fn old_layout_without_a_previous_handler_fails_honestly() {
+        let pc = layout_for as *const () as usize;
+        let null = core::ptr::null_mut::<c_void>();
+        let none = core::ptr::null::<Guid>();
+        assert_eq!(unsafe { route133(ListLayout::Gxdk2021, 0, fake_place, null, 0, core::ptr::null(), 0, core::ptr::null(), none, core::ptr::null_mut(), pc) }, E_NOTIMPL);
+        assert_eq!(unsafe { route127(ListLayout::Gxdk2021, 0, fake_commit, null, core::ptr::null(), 0, core::ptr::null(), 0, core::ptr::null(), null, 0, core::ptr::null(), none, core::ptr::null_mut(), pc) }, E_NOTIMPL);
+    }
+
+    #[test]
+    fn device_install_routes_slots_127_and_133_once() {
+        let mut v: Vec<usize> = (0..160).map(|i| 0x2000 + i).collect();
+        install_device(&mut v);
+        assert_eq!(v[DEV_SLOT_127], dev127 as *const () as usize);
+        assert_eq!(v[DEV_SLOT_133], dev133 as *const () as usize);
+        assert_eq!(PREV_DEV[0].load(Ordering::Relaxed), 0x2000 + DEV_SLOT_127);
+        assert_eq!(PREV_DEV[1].load(Ordering::Relaxed), 0x2000 + DEV_SLOT_133);
+        install_device(&mut v);
+        assert_eq!(PREV_DEV[0].load(Ordering::Relaxed), 0x2000 + DEV_SLOT_127);
+        assert_eq!(PREV_DEV[1].load(Ordering::Relaxed), 0x2000 + DEV_SLOT_133);
+        let mut short: Vec<usize> = (0..100).collect();
+        install_device(&mut short);
+        assert_eq!(short[99], 99);
     }
 }

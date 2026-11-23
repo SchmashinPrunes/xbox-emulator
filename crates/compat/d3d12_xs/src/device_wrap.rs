@@ -520,7 +520,7 @@ static IID_ID3D12RESOURCE: Guid = Guid {
 /// resource IID doesn't make the real call return a null resource.
 /// Args (system ABI): rcx=this, rdx=pHeapProps, r8=HeapFlags, r9=pDesc, then
 /// stack: InitialState, pOptimizedClearValue, riid, ppvResource.
-unsafe extern "system" fn create_committed_resource(
+pub(crate) unsafe extern "system" fn create_committed_resource(
     this: *mut DeviceWrapper, pheap: *const u32, heap_flags: u32, pdesc: *const u32,
     init_state: u32, pclear: *const c_void, riid: *const Guid, ppv: *mut *mut c_void,
 ) -> i32 {
@@ -1937,7 +1937,7 @@ unsafe extern "system" fn create_placed_resource(
 }
 
 /// Xbox slot 44 `CreatePlacedResourceX` (see placed.rs for evidence and model).
-unsafe extern "system" fn create_placed_resource_x(
+pub(crate) unsafe extern "system" fn create_placed_resource_x(
     this: *mut DeviceWrapper, va: u64, pdesc: *const u8, init_state: u32,
     pclear: *const c_void, riid: *const Guid, ppv: *mut *mut c_void,
 ) -> i32 {
@@ -2145,6 +2145,7 @@ pub(crate) fn vtable() -> *const usize {
         crate::ecl_probe::install_device(&mut v);
         crate::cbv_raw::hook_device(&mut v);
         crate::pso_lib::hook_device(&mut v);
+        crate::cl_edition::install_device(&mut v);
         Box::leak(v.into_boxed_slice()).as_ptr() as usize
     }) as *const usize
 }
