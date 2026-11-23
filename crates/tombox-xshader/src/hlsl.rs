@@ -1332,11 +1332,21 @@ fn out_interp_for(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> InputIn
     }
 }
 
+fn fssm_user_base(ex: &ShaderExtract) -> Option<usize> {
+    let rs = ex.root_sig.as_ref()?;
+    let b = crate::fssm_bind::parse(&ex.fssm).ok().flatten()?;
+    if !b.disagreements(rs).is_empty() {
+        return None;
+    }
+    b.user_base(ex.stage).ok().flatten()
+}
+
 fn translate_linked_with(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>, user_data: bool, rsrc1: Option<u32>) -> Result<Translated, String> {
     let rsrc1 = rsrc1.or_else(|| mode::container_pgm_rsrc1(ex));
     let out_interp = out_interp_for(ex, feeds_ps);
-    match translate_with(ex, &out_interp, None, BTreeSet::new(), user_data, rsrc1) {
-        Err(e) if disassemble(&ex.isa).iter().take(16).any(|i| i.mnemonic == "s_swappc_b64") => translate_with(ex, &out_interp, Some(8), BTreeSet::new(), user_data, rsrc1).map_err(|e2| if e2.contains("not a buffer descriptor") || e2.contains("not a root table") { e } else { e2 }),
+    let base = fssm_user_base(ex);
+    match translate_with(ex, &out_interp, base, BTreeSet::new(), user_data, rsrc1) {
+        Err(e) if base.is_none() && disassemble(&ex.isa).iter().take(16).any(|i| i.mnemonic == "s_swappc_b64") => translate_with(ex, &out_interp, Some(8), BTreeSet::new(), user_data, rsrc1).map_err(|e2| if e2.contains("not a buffer descriptor") || e2.contains("not a root table") { e } else { e2 }),
         r => r,
     }
 }

@@ -253,3 +253,44 @@ fn root_signature_static_sampler_with_other_state_is_refused() {
     let Err(e) = translate(&ex) else { panic!("a point-mip static sampler must not bind a trilinear literal") };
     assert!(e.contains("filter 0x14, literal 0x15"), "{e}");
 }
+
+const MERGED_ES_SLOT: usize = 0x28;
+const HW_VS_SLOT: usize = 0x38;
+const LOAD_TABLE_AT_S16: [u32; 2] = [0xf408_0108, 0xfa00_0000];
+const POSITION_EXPORT: [u32; 4] = [0xbf8c_3f70, 0xf800_08cf, 0x0706_0504, 0xbf81_0000];
+
+fn vertex_with_stage_slot(slot: Option<usize>) -> ShaderExtract {
+    let words: Vec<u32> = [&LOAD_TABLE_AT_S16[..], &[0xbf8c_c07f], &BUF_LOAD_V4, &POSITION_EXPORT].concat();
+    let mut table = fssm(9, &[[3, 0, 1, 0, 8]], &[[0x300, 0, 0, 4, 0x0804]]);
+    table[0x40..0x48].copy_from_slice(&0u64.to_le_bytes());
+    if let Some(at) = slot {
+        table[at..at + 8].copy_from_slice(&0xB0u64.to_le_bytes());
+    }
+    let mut ex = pixel_shader(&words, table);
+    ex.stage = Stage::Vertex;
+    ex.output_sig = vec![SigElement { name: "SV_Position".into(), index: 0, sysval: 1, comp_type: 3, register: 0, mask: 0xf, rw_mask: 0 }];
+    ex.has_root_sig = true;
+    ex.root_sig = Some(engine_srv_table());
+    ex
+}
+
+#[test]
+fn merged_es_vertex_shader_reads_user_data_where_the_stage_slot_puts_it() {
+    let t = translate(&vertex_with_stage_slot(Some(MERGED_ES_SLOT))).unwrap_or_else(|e| panic!("{e}"));
+    assert!(t.hlsl.contains("register(t0)"), "{}", t.hlsl);
+    compile("merged ES vertex shader", &t.hlsl, t.profile);
+}
+
+#[test]
+fn without_an_agreeing_table_the_static_guess_stays() {
+    let Err(e) = translate(&vertex_with_stage_slot(Some(HW_VS_SLOT))) else { panic!("a hardware VS reads user data from s8, so s16 is no root table") };
+    assert!(e.contains("buffer in table of kind None"), "{e}");
+    let mut none = vertex_with_stage_slot(Some(MERGED_ES_SLOT));
+    none.fssm[0xE8..0xF0].copy_from_slice(&0xDEAD_BEEF_DEAD_BEEFu64.to_le_bytes());
+    assert!(translate(&none).err().is_some_and(|e| e.contains("buffer in table of kind None")));
+    let mut disagree = vertex_with_stage_slot(Some(MERGED_ES_SLOT));
+    let mut rs = engine_srv_table();
+    rs.params.push(rs.params[0].clone());
+    disagree.root_sig = Some(rs);
+    assert!(translate(&disagree).err().is_some_and(|e| e.contains("buffer in table of kind None")));
+}
