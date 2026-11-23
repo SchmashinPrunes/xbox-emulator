@@ -1458,6 +1458,11 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    fn merged_es(&self) -> bool {
+        self.live.iter().any(|l| l == "s3")
+            && self.insns.iter().take(16).any(|i| matches!(i.mnemonic.as_str(), "s_bfe_u32" | "s_bfe_i32") && i.src.first() == Some(&Opnd::Sgpr(3)))
+    }
+
     fn user_base(&self) -> usize {
         if let Some(b) = self.user_base_override {
             return b;
@@ -7747,13 +7752,19 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID) {{");
         }
         if !is_ps && !self.is_gs {
             let is_durango = self.durango.is_some() || crate::gcn::is_durango(&self.ex.fssm);
+            let merged = ex.stage == Stage::Vertex && self.merged_es();
+            if merged {
+                self.regs.insert("s3".to_string());
+                let _ = writeln!(init, "    s3 = {}u;", if self.wave64 { "0x40" } else { "0x20" });
+            }
+            let attr_base = if merged { 9 } else { 4 };
             let mut group = 0usize;
             for reg in distinct_regs(ex.input_sig.iter().filter(|e| e.sysval == 0)) {
                 let read = ex.input_sig.iter().any(|e| e.sysval == 0 && e.register == reg && (e.rw_mask != 0 || (is_durango && e.mask != 0)));
                 if ex.stage == Stage::Vertex && !read {
                     continue;
                 }
-                let first = if ex.stage == Stage::Vertex { 4 + 4 * group } else { 4 + 4 * reg as usize };
+                let first = if ex.stage == Stage::Vertex { attr_base + 4 * group } else { 4 + 4 * reg as usize };
                 group += 1;
                 for c in 0..4usize {
                     let v = format!("v{}", first + c);
@@ -7769,11 +7780,13 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID) {{");
                     let _ = writeln!(init, "    {v} = {val};");
                 }
             }
-            if ex.stage == Stage::Vertex && !self.vs_lds_out && (self.durango.is_none() || dg_vertex_id_on()) {
+            if ex.stage == Stage::Vertex && (merged || !self.vs_lds_out) && (self.durango.is_none() || dg_vertex_id_on()) {
                 for (ei, e) in ex.input_sig.iter().enumerate() {
-                    let v = match e.sysval {
-                        6 => "v0",
-                        8 => "v3",
+                    let v = match (e.sysval, merged) {
+                        (6, false) => "v0",
+                        (8, false) => "v3",
+                        (6, true) => "v5",
+                        (8, true) => "v8",
                         _ => continue,
                     };
                     if !self.live.iter().any(|l| l == v) {

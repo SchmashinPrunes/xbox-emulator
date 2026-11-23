@@ -417,6 +417,29 @@ fn d3d12_takes_a_changed_container_only_with_the_recomputed_dxil_hash() {
     }
 }
 
+#[test]
+fn merged_vertex_shader_seeds_wave_info_for_the_program_wave_size() {
+    let build = |bfm: u32, cselect: u32| {
+        let mut words = vec![sop2(0x28, 32, 3, LIT), 0x80000, sop2(bfm, 126, 32, ic(0)), sopc(0x06, 32, ic(if bfm == 0x24 { 32 } else { 64 })), sop2(cselect, 126, ic(-1), 126)];
+        words.extend_from_slice(&[0xbe84_2104, 0xf800_00cf, 0x0c0b_0a09, 0xf800_0a0f, 0x0909_0805, S_ENDPGM]);
+        let mut vs = shader(&words);
+        vs.stage = Stage::Vertex;
+        vs.input_sig = vec![sig("POSITION", 0, 3, 0, 0xf), sig("SV_VertexID", 6, 1, 1, 1), sig("SV_InstanceID", 8, 1, 2, 1)];
+        vs.input_sig[0].rw_mask = 0xf;
+        vs.output_sig = vec![sig("SV_Position", 1, 3, 0, 0xf), sig("TEXCOORD", 0, 1, 1, 0xf)];
+        translate(&vs).unwrap().hlsl
+    };
+    let wave32 = build(0x24, 0x0a);
+    assert!(wave32.contains("s3 = 0x20u;") && !wave32.contains("s3 = 0x40u;"), "{wave32}");
+    assert!(wave32.contains("v5 = (uint)(i.i1);") && wave32.contains("v8 = (uint)(i.i2);"), "{wave32}");
+    let wave64 = build(0x25, 0x0b);
+    assert!(wave64.contains("s3 = 0x40u;") && !wave64.contains("s3 = 0x20u;"), "{wave64}");
+    if dxc::available() {
+        dxc::compile(&wave32, "vs_6_0").expect("dxc compiles the wave32 merged vertex shader");
+        dxc::compile(&wave64, "vs_6_0").expect("dxc compiles the wave64 merged vertex shader");
+    }
+}
+
 pub fn hlsl_of(words: &[u32]) -> Result<String, String> {
     translate(&shader(words)).map(|t| t.hlsl)
 }
@@ -3002,4 +3025,67 @@ fn pkaccum_u8_packs_four_bytes_into_one_register() {
     p.raw(&words);
     let got = run(&p.words()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(got[1], 0x0403_0201, "{got:08x?}");
+}
+
+#[test]
+fn merged_vertex_shader_prologue_keeps_the_vertex_active() {
+    let input = |name, format, offset| VertexElement {
+        semantic: name, semantic_index: 0, format, slot: 0, offset, input_class: 0, step_rate: 0,
+    };
+    let layout = [
+        input(b"POSITION\0".as_ptr(), 16, 0),
+        input(b"NORMAL\0".as_ptr(), 2, 8),
+        input(b"TEXCOORD\0".as_ptr(), 42, 24),
+    ];
+    let mut words = vec![sop2(0x28, 32, 3, LIT), 0x80000, sop2(0x25, 126, 32, ic(0)), sopc(0x06, 32, ic(64)), sop2(0x0b, 126, ic(-1), 126)];
+    words.extend_from_slice(&[0xbe84_2104, 0xf800_00cf, 0x0c0b_0a09, 0xf800_0a0f, 0x100f_0e0d, S_ENDPGM]);
+    let mut vs = shader(&words);
+    vs.stage = Stage::Vertex;
+    vs.input_sig = vec![sig("POSITION", 0, 3, 0, 3), sig("NORMAL", 0, 3, 1, 0xf), sig("TEXCOORD", 0, 1, 3, 4)];
+    vs.input_sig[0].rw_mask = 3;
+    vs.input_sig[2].rw_mask = 4;
+    vs.output_sig = vec![sig("SV_Position", 1, 3, 0, 0xf), sig("TEXCOORD", 0, 1, 1, 0xf)];
+    let vs = translate(&vs).unwrap();
+    let vertex_code = dxc::compile(&vs.hlsl, &dxc::profile_for(vs.profile)).unwrap();
+    let pixel_code = dxc::compile(
+        "uint4 main(float4 p : SV_Position, nointerpolation uint4 v : TEXCOORD0) : SV_Target { return v ^ uint4(uint2(p.xy), 0, 0); }",
+        "ps_6_0",
+    ).unwrap();
+    let vertices: Vec<u8> = [(-1.0f32, 1.0f32), (3.0, 1.0), (-1.0, -3.0)]
+        .into_iter()
+        .flat_map(|(x, y)| [x.to_bits(), y.to_bits(), 0x41a8_0000, 0, 0, 0, 0x1234])
+        .flat_map(u32::to_le_bytes)
+        .collect();
+    let mut c = CTX.get_or_init(|| Mutex::new(unsafe { ctx_new() })).lock().unwrap_or_else(|e| e.into_inner());
+    let result = unsafe {
+        let vb = c.gpu.buffer(vertices.len() as u64, 2, 0xac3, false).unwrap();
+        assert!(Gpu::map_write(vb, &vertices));
+        let view = [Gpu::gpu_va(vb), ((28u64) << 32) | vertices.len() as u64];
+        let rs = c.rs;
+        let result = draw_graphics(&mut c, &pixel_code, rs, &|list| {
+            vcall!(list, 44, fn(u32, u32, *const u64) -> (), 0, 1, view.as_ptr());
+        }, &|_| {}, Some((&vertex_code, &layout)));
+        d3d::release(vb);
+        result
+    };
+    assert_eq!(result.unwrap_or_else(|e| panic!("{e}\n{}", vs.hlsl)), [0, 0, 0x1234, 0x3f80_0000], "{}", vs.hlsl);
+}
+
+#[test]
+fn merged_vertex_shader_reads_vertex_and_instance_index_from_v5_and_v8() {
+    let mut words = vec![sop2(0x28, 32, 3, LIT), 0x80000, sop2(0x25, 126, 32, ic(0)), sopc(0x06, 32, ic(64)), sop2(0x0b, 126, ic(-1), 126)];
+    words.extend_from_slice(&[0xbe84_2104, 0xf800_00cf, 0x0c0b_0a09, 0xf800_0a0f, 0x0909_0805, S_ENDPGM]);
+    let mut vs = shader(&words);
+    vs.stage = Stage::Vertex;
+    vs.input_sig = vec![sig("POSITION", 0, 3, 0, 0xf), sig("SV_VertexID", 6, 1, 1, 1), sig("SV_InstanceID", 8, 1, 2, 1)];
+    vs.input_sig[0].rw_mask = 0xf;
+    vs.output_sig = vec![sig("SV_Position", 1, 3, 0, 0xf), sig("TEXCOORD", 0, 1, 1, 0xf)];
+    let h = translate(&vs).unwrap().hlsl;
+    assert!(h.contains("s3 = 0x40u;"), "{h}");
+    assert!(h.contains("v5 = (uint)(i.i1);") && h.contains("v8 = (uint)(i.i2);"), "{h}");
+    assert!(h.contains("v9 = asuint(i.i0.x);") && !h.contains("v4 = asuint(i.i0.x);"), "{h}");
+    assert!(!h.contains("v0 = (uint)(i.i") && !h.contains("v3 = (uint)(i.i"), "{h}");
+    if dxc::available() {
+        dxc::compile(&h, "vs_6_0").expect("dxc compiles the merged vertex shader");
+    }
 }
