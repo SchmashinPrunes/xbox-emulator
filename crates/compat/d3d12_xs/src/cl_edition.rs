@@ -124,6 +124,9 @@ pub fn after_call(code: &[u8; 8]) -> bool {
         }
         let (md, rm) = (m >> 6, m & 7);
         let sib = (md != 3 && rm == 4) as usize;
+        if sib == 1 && k < 3 {
+            continue;
+        }
         let len = match md {
             3 => 2,
             1 => 3 + sib,
@@ -336,6 +339,8 @@ mod tests {
         assert!(t(&[0xff, 0x90, 0x18, 0x04, 0, 0]));
         assert!(t(&[0xff, 0x94, 0x24, 0x18, 0x04, 0, 0]));
         assert!(t(&[0xff, 0x54, 0x24, 0x20]));
+        assert!(!t(&[0xff, 0x14]));
+        assert!(t(&[0xff, 0x90, 0, 0, 0xff, 0x14]));
         assert!(!t(&[0x48, 0x8b, 0x05, 1, 2, 3, 4]));
         assert!(!t(&[0xff, 0x25, 1, 2, 3, 4]));
         assert!(!t(&[0xff, 0xe0]));
