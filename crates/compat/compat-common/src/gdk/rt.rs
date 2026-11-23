@@ -42,46 +42,39 @@ unsafe fn real_xasync_ok() -> bool {
 
 type Tagged = (usize, Job);
 
-struct Pool {
-    q: Mutex<VecDeque<Tagged>>,
-    cv: Condvar,
-    started: AtomicUsize,
+extern "system" {
+    fn TrySubmitThreadpoolCallback(
+        pfns: unsafe extern "system" fn(*mut c_void, *mut c_void),
+        pv: *mut c_void,
+        pcbe: *mut c_void,
+    ) -> i32;
+    fn CallbackMayRunLong(pci: *mut c_void) -> i32;
 }
 
-fn pool() -> &'static Pool {
-    static P: OnceLock<Pool> = OnceLock::new();
-    let p = P.get_or_init(|| Pool { q: Mutex::new(VecDeque::new()), cv: Condvar::new(), started: AtomicUsize::new(0) });
-    let want = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 8);
-    while p.started.load(Ordering::Acquire) < want {
-        if p.started.fetch_add(1, Ordering::AcqRel) >= want {
-            break;
-        }
-        std::thread::spawn(|| {
-            let p = pool();
-            loop {
-                let job = {
-                    let mut q = p.q.lock().unwrap_or_else(|e| e.into_inner());
-                    loop {
-                        if let Some((_, j)) = q.pop_front() {
-                            break j;
-                        }
-                        q = p.cv.wait(q).unwrap_or_else(|e| e.into_inner());
-                    }
-                };
-                job(false);
-            }
-        });
+unsafe extern "system" fn tp_trampoline(instance: *mut c_void, ctx: *mut c_void) {
+    CallbackMayRunLong(instance);
+    let port = Arc::from_raw(ctx as *const Port);
+    port.drain_one();
+}
+
+fn submit_to_thread_pool(port: Arc<Port>) {
+    let raw = Arc::into_raw(port) as *mut c_void;
+    let ok = unsafe { TrySubmitThreadpoolCallback(tp_trampoline, raw, core::ptr::null_mut()) };
+    if ok == 0 {
+        let port = unsafe { Arc::from_raw(raw as *const Port) };
+        std::thread::spawn(move || port.drain_one());
     }
-    p
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Monitor {
     token: u64,
     ctx: usize,
     cb: MonitorCb,
     port: u32,
     target: usize,
+    handle: usize,
+    queue: std::sync::Weak<Queue>,
 }
 
 fn monitors() -> &'static Mutex<HashMap<usize, Vec<Monitor>>> {
@@ -105,31 +98,47 @@ impl Port {
 
     #[cfg(test)]
     fn submit(self: &Arc<Port>, job: Job) {
-        self.submit_tagged(0, job)
+        self.submit_tagged(0, 0, job)
     }
 
-    fn notify(&self, queue: usize) {
-        if queue == 0 {
+    fn drain_one(&self) {
+        let job = self.items.lock().unwrap_or_else(|e| e.into_inner()).pop_front().map(|(_, j)| j);
+        if let Some(j) = job {
+            j(self.terminated.load(Ordering::Acquire));
+        }
+    }
+
+    fn notify(&self, owner: usize, submit_port: Option<u32>) {
+        if owner == 0 {
             return;
         }
         let me = self as *const Port as usize;
-        let m: Vec<Monitor> = match monitors().lock().unwrap_or_else(|e| e.into_inner()).get(&queue) {
-            Some(v) => v.iter().filter(|x| x.target == me).copied().collect(),
-            None => return,
+        let m: Vec<Monitor> = {
+            let all = monitors().lock().unwrap_or_else(|e| e.into_inner());
+            all.iter()
+                .flat_map(|(&qid, list)| {
+                    list.iter()
+                        .filter(move |x| x.target == me && (qid != owner || submit_port.is_none_or(|sp| x.port == sp)))
+                        .cloned()
+                })
+                .collect()
         };
         for x in m {
-            unsafe { (x.cb)(x.ctx as *mut c_void, queue, x.port) };
+            let h = x.queue.upgrade().and_then(|qq| qq.live_handle(x.handle));
+            if let Some(h) = h {
+                unsafe { (x.cb)(x.ctx as *mut c_void, h, x.port) };
+            }
         }
     }
 
-    fn submit_tagged(self: &Arc<Port>, tag: usize, job: Job) {
+    fn submit_tagged(self: &Arc<Port>, tag: usize, port: u32, job: Job) {
         if self.terminated.load(Ordering::Acquire) {
             job(true);
             return;
         }
         self.enqueue(tag, job);
         if self.mode != IMMEDIATE {
-            self.notify(tag);
+            self.notify(tag, Some(port));
         }
     }
 
@@ -137,9 +146,9 @@ impl Port {
         match self.mode {
             IMMEDIATE => job(false),
             THREAD_POOL => {
-                let p = pool();
-                p.q.lock().unwrap_or_else(|e| e.into_inner()).push_back((tag, job));
-                p.cv.notify_one();
+                self.items.lock().unwrap_or_else(|e| e.into_inner()).push_back((tag, job));
+                self.cv.notify_one();
+                submit_to_thread_pool(self.clone());
             }
             SERIALIZED => {
                 self.items.lock().unwrap_or_else(|e| e.into_inner()).push_back((tag, job));
@@ -177,23 +186,23 @@ impl Port {
         });
     }
 
-    fn submit_marker(self: &Arc<Port>, queue: usize, job: Job) {
+    fn submit_marker(self: &Arc<Port>, owner: usize, port: u32, job: Job) {
         match self.mode {
             IMMEDIATE => job(false),
             THREAD_POOL => {
-                let p = pool();
-                p.q.lock().unwrap_or_else(|e| e.into_inner()).push_back((0, job));
-                p.cv.notify_one();
-                self.notify(queue);
+                self.items.lock().unwrap_or_else(|e| e.into_inner()).push_back((0, job));
+                self.cv.notify_one();
+                submit_to_thread_pool(self.clone());
+                self.notify(owner, Some(port));
             }
             _ => {
                 self.items.lock().unwrap_or_else(|e| e.into_inner()).push_back((0, job));
                 self.cv.notify_all();
                 if self.mode == SERIALIZED {
                     self.ensure_serial();
-                    self.notify(queue);
+                    self.notify(owner, Some(port));
                 } else if self.users.load(Ordering::Acquire) != 0 {
-                    self.notify(queue);
+                    self.notify(owner, Some(port));
                 } else {
                     let drained: Vec<Job> = self.items.lock().unwrap_or_else(|e| e.into_inner()).drain(..).map(|(_, j)| j).collect();
                     for j in drained {
@@ -205,19 +214,26 @@ impl Port {
     }
 
     fn dispatch(&self, timeout_ms: u32) -> bool {
-        let deadline = Instant::now() + Duration::from_millis(timeout_ms as u64);
+        let deadline = (timeout_ms != 0 && timeout_ms != u32::MAX).then(|| Instant::now() + Duration::from_millis(timeout_ms as u64));
         let job = {
             let mut q = self.items.lock().unwrap_or_else(|e| e.into_inner());
             loop {
                 if let Some((_, j)) = q.pop_front() {
                     break Some(j);
                 }
-                let now = Instant::now();
-                if timeout_ms == 0 || now >= deadline {
+                if self.terminated.load(Ordering::Acquire) || timeout_ms == 0 {
                     break None;
                 }
-                let wait = if timeout_ms == u32::MAX { Duration::from_millis(100) } else { deadline - now };
-                q = self.cv.wait_timeout(q, wait).unwrap_or_else(|e| e.into_inner()).0;
+                q = match deadline {
+                    Some(d) => {
+                        let now = Instant::now();
+                        if now >= d {
+                            break None;
+                        }
+                        self.cv.wait_timeout(q, d - now).unwrap_or_else(|e| e.into_inner()).0
+                    }
+                    None => self.cv.wait(q).unwrap_or_else(|e| e.into_inner()),
+                };
             }
         };
         match job {
@@ -229,12 +245,20 @@ impl Port {
         }
     }
 
+    fn terminate(&self) {
+        self.terminated.store(true, Ordering::Release);
+        let _g = self.items.lock().unwrap_or_else(|e| e.into_inner());
+        self.cv.notify_all();
+    }
+
     fn release(&self) {
         if self.users.fetch_sub(1, Ordering::AcqRel) == 1 {
-            self.cancel_all();
+            let _g = self.items.lock().unwrap_or_else(|e| e.into_inner());
+            self.cv.notify_all();
         }
     }
 
+    #[cfg(test)]
     fn cancel_all(&self) {
         self.terminated.store(true, Ordering::Release);
         let drained: Vec<Job> = self.items.lock().unwrap_or_else(|e| e.into_inner()).drain(..).map(|(_, j)| j).collect();
@@ -246,7 +270,6 @@ impl Port {
 }
 
 pub struct Queue {
-    magic: u64,
     work: Arc<Port>,
     completion: Arc<Port>,
     refs: AtomicUsize,
@@ -254,6 +277,18 @@ pub struct Queue {
     owns: bool,
     ended: Arc<AtomicBool>,
     live: Arc<Live>,
+    handles: Mutex<Vec<usize>>,
+}
+
+impl Queue {
+    fn id(&self) -> usize {
+        self as *const Queue as usize
+    }
+
+    fn live_handle(&self, preferred: usize) -> Option<usize> {
+        let hs = self.handles.lock().unwrap_or_else(|e| e.into_inner());
+        if hs.contains(&preferred) { Some(preferred) } else { hs.first().copied() }
+    }
 }
 
 type Idle = Box<dyn FnOnce() + Send>;
@@ -346,10 +381,55 @@ fn port_handle(p: &Arc<Port>) -> usize {
     k
 }
 
+fn handles() -> &'static Mutex<HashMap<usize, Arc<Queue>>> {
+    static M: OnceLock<Mutex<HashMap<usize, Arc<Queue>>>> = OnceLock::new();
+    M.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn alloc_handle(q: Arc<Queue>) -> usize {
+    let h = Box::into_raw(Box::new(QMAGIC)) as usize;
+    q.refs.fetch_add(1, Ordering::AcqRel);
+    q.handles.lock().unwrap_or_else(|e| e.into_inner()).push(h);
+    handles().lock().unwrap_or_else(|e| e.into_inner()).insert(h, q);
+    h
+}
+
+fn close_handle(h: usize) {
+    if h == 0 {
+        return;
+    }
+    let Some(qq) = handles().lock().unwrap_or_else(|e| e.into_inner()).remove(&h) else {
+        return;
+    };
+    {
+        let mut hs = qq.handles.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(pos) = hs.iter().position(|x| *x == h) {
+            hs.swap_remove(pos);
+        }
+    }
+    unsafe { drop(Box::from_raw(h as *mut u64)) };
+    let prev = qq.refs.fetch_sub(1, Ordering::AcqRel);
+    if !qq.process && prev == 1 {
+        monitors().lock().unwrap_or_else(|e| e.into_inner()).remove(&qq.id());
+        drop_waiters(&qq, false);
+        qq.work.release();
+        qq.completion.release();
+    }
+}
+
 fn new_queue(work: Arc<Port>, completion: Arc<Port>, process: bool, owns: bool) -> usize {
     work.users.fetch_add(1, Ordering::AcqRel);
     completion.users.fetch_add(1, Ordering::AcqRel);
-    Box::into_raw(Box::new(Queue { magic: QMAGIC, work, completion, refs: AtomicUsize::new(1), process, owns, ended: Arc::new(AtomicBool::new(false)), live: Arc::new(Live::default()) })) as usize
+    alloc_handle(Arc::new(Queue {
+        work,
+        completion,
+        refs: AtomicUsize::new(0),
+        process,
+        owns,
+        ended: Arc::new(AtomicBool::new(false)),
+        live: Arc::new(Live::default()),
+        handles: Mutex::new(Vec::new()),
+    }))
 }
 
 fn default_process_queue() -> usize {
@@ -373,19 +453,17 @@ pub fn process_queue_available() -> bool {
     !active() || process_queue() != 0
 }
 
-unsafe fn queue<'a>(h: usize) -> Option<&'a Queue> {
+fn queue(h: usize) -> Option<Arc<Queue>> {
     let h = if h == 0 { process_queue() } else { h };
-    let q = (h as *const Queue).as_ref()?;
-    if q.magic == QMAGIC { Some(q) } else { None }
+    if h == 0 {
+        return None;
+    }
+    handles().lock().unwrap_or_else(|e| e.into_inner()).get(&h).cloned()
 }
 
-unsafe fn port_of(h: usize, port: u32) -> Option<Arc<Port>> {
+fn port_of(h: usize, port: u32) -> Option<Arc<Port>> {
     let q = queue(h)?;
     Some(if port == 0 { q.work.clone() } else { q.completion.clone() })
-}
-
-fn resolve(h: usize) -> usize {
-    if h == 0 { process_queue() } else { h }
 }
 
 enum Queued {
@@ -396,15 +474,20 @@ enum Queued {
 
 unsafe fn queued(h: usize, port: u32, job: Job) -> Queued {
     let Some(q) = queue(h) else { return Queued::Invalid(job) };
-    let p = if port == 0 { q.work.clone() } else { q.completion.clone() };
+    queued_on(&q, port, job)
+}
+
+fn queued_on(q: &Arc<Queue>, port: u32, job: Job) -> Queued {
+    let p =if port == 0 { q.work.clone() } else { q.completion.clone() };
     if p.terminated.load(Ordering::Acquire) || !q.live.try_enter(port) {
         return Queued::Aborted(job);
     }
+    let tag = q.id();
     let ended = q.ended.clone();
     let live = q.live.clone();
     Queued::Ready(
         p,
-        resolve(h),
+        tag,
         Box::new(move |canceled| {
             let key = Arc::as_ptr(&live) as usize;
             FRAMES.with(|f| f.borrow_mut().push((key, port, false)));
@@ -438,7 +521,7 @@ fn release_own_frames(live: &Arc<Live>) -> Vec<u32> {
 pub unsafe fn submit(queue_h: usize, port: u32, job: Job) -> i32 {
     match queued(queue_h, port, job) {
         Queued::Ready(p, tag, j) => {
-            p.submit_tagged(tag, j);
+            p.submit_tagged(tag, port, j);
             S_OK
         }
         Queued::Aborted(_) => E_ABORT,
@@ -456,7 +539,7 @@ fn timers() -> &'static (Mutex<Vec<Timer>>, Condvar) {
         std::thread::spawn(|| {
             let (m, cv) = timers();
             loop {
-                let mut due: Vec<(Arc<Port>, usize, Job)> = Vec::new();
+                let mut due: Vec<(Arc<Port>, usize, u32, Job)> = Vec::new();
                 {
                     let mut v = m.lock().unwrap_or_else(|e| e.into_inner());
                     loop {
@@ -464,9 +547,9 @@ fn timers() -> &'static (Mutex<Vec<Timer>>, Condvar) {
                         let mut i = 0;
                         while i < v.len() {
                             if v[i].0 <= now {
-                                let (_, tag, _, p, j) = v.swap_remove(i);
+                                let (_, tag, port, p, j) = v.swap_remove(i);
                                 if let Some(j) = j {
-                                    due.push((p, tag, j));
+                                    due.push((p, tag, port, j));
                                 }
                             } else {
                                 i += 1;
@@ -482,8 +565,8 @@ fn timers() -> &'static (Mutex<Vec<Timer>>, Condvar) {
                         };
                     }
                 }
-                for (p, tag, j) in due {
-                    p.submit_tagged(tag, j);
+                for (p, tag, port, j) in due {
+                    p.submit_tagged(tag, port, j);
                 }
             }
         });
@@ -498,7 +581,7 @@ pub unsafe fn submit_delayed(queue_h: usize, port: u32, delay_ms: u32, job: Job)
         Queued::Invalid(_) => return E_INVALIDARG,
     };
     if delay_ms == 0 {
-        p.submit_tagged(tag, job);
+        p.submit_tagged(tag, port, job);
         return S_OK;
     }
     let (m, cv) = timers();
@@ -508,16 +591,16 @@ pub unsafe fn submit_delayed(queue_h: usize, port: u32, delay_ms: u32, job: Job)
 }
 
 fn flush_timers(tag: usize, port: u32, whole: Option<&Arc<Port>>) {
-    let mut due: Vec<(Arc<Port>, usize, Job)> = Vec::new();
+    let mut due: Vec<(Arc<Port>, usize, u32, Job)> = Vec::new();
     {
         let (m, cv) = timers();
         let mut v = m.lock().unwrap_or_else(|e| e.into_inner());
         let mut i = 0;
         while i < v.len() {
             if (v[i].1 == tag && v[i].2 == port) || whole.is_some_and(|p| Arc::ptr_eq(p, &v[i].3)) {
-                let (_, tg, _, p, j) = v.swap_remove(i);
+                let (_, tg, pt, p, j) = v.swap_remove(i);
                 if let Some(j) = j {
-                    due.push((p, tg, j));
+                    due.push((p, tg, pt, j));
                 }
             } else {
                 i += 1;
@@ -525,8 +608,8 @@ fn flush_timers(tag: usize, port: u32, whole: Option<&Arc<Port>>) {
         }
         cv.notify_all();
     }
-    for (p, tg, j) in due {
-        p.submit_tagged(tg, j);
+    for (p, tg, port, j) in due {
+        p.submit_tagged(tg, port, j);
     }
 }
 
@@ -574,31 +657,23 @@ unsafe extern "system" fn q_create_composite(_t: This, work: usize, completion: 
 }
 
 unsafe extern "system" fn q_duplicate(_t: This, q: usize, out: *mut usize) -> i32 {
-    let Some(qq) = queue(q) else { return E_INVALIDARG };
     if out.is_null() {
         return E_INVALIDARG;
     }
-    qq.refs.fetch_add(1, Ordering::AcqRel);
-    *out = if q == 0 { process_queue() } else { q };
+    let Some(qq) = queue(q) else { return E_INVALIDARG };
+    *out = alloc_handle(qq);
     S_OK
 }
 
 unsafe extern "system" fn q_dispatch(_t: This, q: usize, port: u32, timeout: u32) -> bool {
     match port_of(q, port) {
-        Some(p) if p.mode == MANUAL => p.dispatch(timeout),
+        Some(p) if p.mode != IMMEDIATE => p.dispatch(timeout),
         _ => false,
     }
 }
 
 unsafe extern "system" fn q_close(_t: This, q: usize) {
-    if let Some(qq) = queue(q) {
-        if !qq.process && qq.refs.fetch_sub(1, Ordering::AcqRel) == 1 {
-            monitors().lock().unwrap_or_else(|e| e.into_inner()).remove(&q);
-            drop_waiters(q, false);
-            qq.work.release();
-            qq.completion.release();
-        }
-    }
+    close_handle(q);
 }
 
 unsafe extern "system" fn q_submit(_t: This, q: usize, port: u32, ctx: *mut c_void, cb: Option<TaskCb>) -> i32 {
@@ -618,7 +693,7 @@ unsafe extern "system" fn q_terminate(_t: This, q: usize, wait: bool, ctx: *mut 
     if qq.process {
         return E_ACCESSDENIED;
     }
-    let h = resolve(q);
+    let tag = qq.id();
     let sig = Arc::new(Signal { done: Mutex::new(false), cv: Condvar::new() });
     let c = SendPtr(ctx as usize);
     let s2 = sig.clone();
@@ -633,33 +708,31 @@ unsafe extern "system" fn q_terminate(_t: This, q: usize, wait: bool, ctx: *mut 
     let completion = qq.completion.clone();
     let live = qq.live.clone();
     let owns = qq.owns;
-    drop_waiters(h, true);
+    drop_waiters(&qq, true);
     let route: Idle = Box::new(move || {
         let deliver: Job = Box::new(move |_| done());
         let forward: Job = Box::new(move |_| {
             let closing = completion.clone();
             live.finish_work(
                 move || {
-                    flush_timers(h, 1, owns.then_some(&closing));
+                    flush_timers(tag, 1, owns.then_some(&closing));
                     if owns {
-                        closing.terminated.store(true, Ordering::Release);
-                        closing.cv.notify_all();
+                        closing.terminate();
                     }
                 },
-                Box::new(move || completion.submit_marker(h, deliver)),
+                Box::new(move || completion.submit_marker(tag, 1, deliver)),
             )
         });
-        work.submit_marker(h, forward);
+        work.submit_marker(tag, 0, forward);
     });
     let own = release_own_frames(&qq.live);
     qq.live.end(&qq.ended, route);
     for port in own {
         qq.live.leave(port);
     }
-    flush_timers(h, 0, qq.owns.then_some(&qq.work));
+    flush_timers(tag, 0, qq.owns.then_some(&qq.work));
     if qq.owns {
-        qq.work.terminated.store(true, Ordering::Release);
-        qq.work.cv.notify_all();
+        qq.work.terminate();
     }
     if wait {
         let mut d = sig.done.lock().unwrap_or_else(|e| e.into_inner());
@@ -675,10 +748,13 @@ unsafe extern "system" fn q_get_process(_t: This, out: *mut usize) -> bool {
         return false;
     }
     let p = process_queue();
-    match queue(p).filter(|_| p != 0) {
-        Some(q) => {
-            q.refs.fetch_add(1, Ordering::AcqRel);
-            *out = p;
+    if p == 0 {
+        *out = 0;
+        return false;
+    }
+    match queue(p) {
+        Some(qq) => {
+            *out = alloc_handle(qq);
             true
         }
         None => {
@@ -703,16 +779,13 @@ unsafe extern "system" fn q_set_process(_t: This, q: usize) {
         0
     } else {
         match queue(q) {
-            Some(qq) => {
-                qq.refs.fetch_add(1, Ordering::AcqRel);
-                q
-            }
+            Some(qq) => alloc_handle(qq),
             None => fail_fast("XTaskQueueSetCurrentProcessTaskQueue", q),
         }
     };
     let prev = OVERRIDE.swap(next, Ordering::AcqRel);
     if prev != 0 && prev != DEFAULT_PROCESS {
-        q_close(_t, prev);
+        close_handle(prev);
     }
 }
 
@@ -727,26 +800,24 @@ unsafe extern "system" fn q_register_monitor(_t: This, q: usize, ctx: *mut c_voi
     if token.is_null() {
         return E_POINTER;
     }
-    let h = resolve(q);
+    let handle = if q == 0 { process_queue() } else { q };
+    let id = qq.id();
     let mut all = monitors().lock().unwrap_or_else(|e| e.into_inner());
-    let list = all.entry(h).or_default();
+    let list = all.entry(id).or_default();
     if list.len() / 2 >= MONITOR_MAX {
         return E_OUTOFMEMORY;
     }
     let t = NEXT_MONITOR.fetch_add(1, Ordering::AcqRel) as u64;
     for (p, port) in [(&qq.work, 0u32), (&qq.completion, 1u32)] {
-        list.push(Monitor { token: t, ctx: ctx as usize, cb, port, target: Arc::as_ptr(p) as usize });
+        list.push(Monitor { token: t, ctx: ctx as usize, cb, port, target: Arc::as_ptr(p) as usize, handle, queue: Arc::downgrade(&qq) });
     }
     *token = t;
     S_OK
 }
 
 unsafe extern "system" fn q_unregister_monitor(_t: This, q: usize, token: u64) {
-    if queue(q).is_none() {
-        return;
-    }
-    let h = resolve(q);
-    if let Some(list) = monitors().lock().unwrap_or_else(|e| e.into_inner()).get_mut(&h) {
+    let Some(qq) = queue(q) else { return };
+    if let Some(list) = monitors().lock().unwrap_or_else(|e| e.into_inner()).get_mut(&qq.id()) {
         list.retain(|m| m.token != token);
     }
 }
@@ -767,7 +838,8 @@ struct WaiterState {
 }
 
 struct Waiter {
-    queue: usize,
+    queue: std::sync::Weak<Queue>,
+    qid: usize,
     port: u32,
     handle: usize,
     ctx: usize,
@@ -828,17 +900,22 @@ unsafe extern "system" fn waiter_fired(_inst: *mut c_void, ctx: *mut c_void, _wa
         w2.rearm();
     });
     let prev = IN_WAIT_CB.with(|c| c.replace(w.tp));
-    match queued(w.queue, w.port, job) {
-        Queued::Ready(p, tag, j) => p.submit_tagged(tag, j),
+    let r = match w.queue.upgrade() {
+        Some(q) => queued_on(&q, w.port, job),
+        None => Queued::Invalid(job),
+    };
+    match r {
+        Queued::Ready(p, tag, j) => p.submit_tagged(tag, w.port, j),
         Queued::Aborted(_) | Queued::Invalid(_) => w.st.lock().unwrap_or_else(|e| e.into_inner()).appended = false,
     }
     IN_WAIT_CB.with(|c| c.set(prev));
 }
 
-fn drop_waiters(h: usize, cancel: bool) {
+fn drop_waiters(qq: &Arc<Queue>, cancel: bool) {
+    let qid = qq.id();
     let mine: Vec<Arc<Waiter>> = {
         let mut all = waiters().lock().unwrap_or_else(|e| e.into_inner());
-        let tokens: Vec<u64> = all.iter().filter(|(_, w)| w.queue == h).map(|(t, _)| *t).collect();
+        let tokens: Vec<u64> = all.iter().filter(|(_, w)| w.qid == qid).map(|(t, _)| *t).collect();
         tokens.iter().filter_map(|t| all.remove(t)).collect()
     };
     for w in mine {
@@ -846,8 +923,8 @@ fn drop_waiters(h: usize, cancel: bool) {
         if cancel && !appended {
             let c = SendPtr(w.ctx as usize);
             let cb = w.cb;
-            if let Queued::Ready(p, tag, j) = unsafe { queued(h, w.port, Box::new(move |_| cb(c.0 as *mut c_void, true))) } {
-                p.submit_tagged(tag, j);
+            if let Queued::Ready(p, tag, j) = queued_on(qq, w.port, Box::new(move |_| unsafe { cb(c.0 as *mut c_void, true) })) {
+                p.submit_tagged(tag, w.port, j);
             }
         }
     }
@@ -871,7 +948,7 @@ unsafe extern "system" fn q_register_waiter(_t: This, q: usize, port: u32, handl
     if tp.is_null() {
         return E_OUTOFMEMORY;
     }
-    let w = Arc::new(Waiter { queue: resolve(q), port, handle, ctx: ctx as usize, cb, tp: tp as usize, st: Mutex::new(WaiterState::default()) });
+    let w = Arc::new(Waiter { queue: Arc::downgrade(&qq), qid: qq.id(), port, handle, ctx: ctx as usize, cb, tp: tp as usize, st: Mutex::new(WaiterState::default()) });
     waiters().lock().unwrap_or_else(|e| e.into_inner()).insert(t, w.clone());
     *token = t;
     if !w.st.lock().unwrap_or_else(|e| e.into_inner()).deleted {
@@ -881,14 +958,12 @@ unsafe extern "system" fn q_register_waiter(_t: This, q: usize, port: u32, handl
 }
 
 unsafe extern "system" fn q_unregister_waiter(_t: This, q: usize, token: u64) {
-    if queue(q).is_none() {
-        return;
-    }
-    let h = resolve(q);
+    let Some(qq) = queue(q) else { return };
+    let qid = qq.id();
     let w = {
         let mut all = waiters().lock().unwrap_or_else(|e| e.into_inner());
         match all.get(&token) {
-            Some(w) if w.queue == h => all.remove(&token),
+            Some(w) if w.qid == qid => all.remove(&token),
             _ => None,
         }
     };
@@ -1118,7 +1193,7 @@ unsafe fn complete_state(s: &Arc<AState>, block: *mut Block, hr: i32, size: usiz
                 done.signal();
             });
             match queued(s.queue, 1, job) {
-                Queued::Ready(p, tag, j) => p.submit_tagged(tag, j),
+                Queued::Ready(p, tag, j) => p.submit_tagged(tag, 1, j),
                 Queued::Aborted(j) => j(true),
                 Queued::Invalid(_) => {
                     if after_callback {
@@ -1317,7 +1392,27 @@ mod port_tests {
         let port = running_serial_port(1);
         port.release();
         assert_worker_stopped(&port);
-        assert!(port.terminated.load(Ordering::Acquire));
+        assert!(!port.terminated.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn released_serialized_port_runs_queued_callbacks_then_exits() {
+        let port = Port::new(SERIALIZED);
+        port.users.store(1, Ordering::Release);
+        let (started_tx, started_rx) = mpsc::channel();
+        let (finish_tx, finish_rx) = mpsc::channel();
+        port.submit(Box::new(move |_| {
+            started_tx.send(()).unwrap();
+            finish_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        }));
+        started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+
+        let (queued_tx, queued_rx) = mpsc::channel();
+        port.submit(Box::new(move |canceled| queued_tx.send(canceled).unwrap()));
+        port.release();
+        finish_tx.send(()).unwrap();
+        assert!(!queued_rx.recv_timeout(Duration::from_secs(2)).unwrap());
+        assert_worker_stopped(&port);
     }
 
     #[test]
@@ -1338,7 +1433,7 @@ mod port_tests {
         port.release();
         assert_worker_stopped(&port);
         let (tx, rx) = mpsc::channel();
-        port.submit_marker(0, Box::new(move |_| tx.send(()).unwrap()));
+        port.submit_marker(0, 0, Box::new(move |_| tx.send(()).unwrap()));
         rx.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_worker_stopped(&port);
     }
@@ -1361,7 +1456,7 @@ mod port_tests {
         assert!(cancel_rx.recv_timeout(Duration::from_secs(2)).unwrap());
 
         let (marker_tx, marker_rx) = mpsc::channel();
-        port.submit_marker(0, Box::new(move |_| marker_tx.send(()).unwrap()));
+        port.submit_marker(0, 0, Box::new(move |_| marker_tx.send(()).unwrap()));
         assert!(matches!(marker_rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
         finish_tx.send(()).unwrap();
         marker_rx.recv_timeout(Duration::from_secs(2)).unwrap();
