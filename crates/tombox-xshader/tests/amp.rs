@@ -429,15 +429,26 @@ fn console_args() -> Vec<u32> {
 }
 
 fn synth_as(head: &[u32], tag_and_count: &[u32], args: &[u32]) -> Vec<u32> {
+    synth_as_with(head, tag_and_count, args, &[], 16)
+}
+
+fn synth_as_with(head: &[u32], tag_and_count: &[u32], args: &[u32], tail: &[u32], stride: u32) -> Vec<u32> {
     let mut w = head.to_vec();
     w.extend([sop1(3, 6, 3), sop1(3, 7, ic(0)), sop1(3, 3, ic(0))]);
     w.extend([sop2(31, 2, 2, ic(8)), sop2(31, 6, 6, ic(8))]);
-    w.extend([sop2(30, 8, 4, ic(4)), sop2(0, 2, 2, 8), sop2(4, 3, 3, ic(0)), sop2(0, 6, 6, 8), sop2(4, 7, 7, ic(0))]);
+    let pay_step = if stride == 16 {
+        8
+    } else {
+        w.extend([sop2(0x26, 14, 4, LIT), stride]);
+        14
+    };
+    w.extend([sop2(30, 8, 4, ic(4)), sop2(0, 2, 2, 8), sop2(4, 3, 3, ic(0)), sop2(0, 6, 6, pay_step), sop2(4, 7, 7, ic(0))]);
     w.push(sop2(30, 9, 4, ic(2)));
     w.extend(tag_and_count);
     w.extend([vop1(1, 10, ic(0)), vop1(1, 4, 9), vop1(1, 5, 10), vop1(1, 6, 4), vop1(1, 7, LIT), 0x5a5a, vop1(1, 8, 11)]);
     w.extend(global(30, 10, 4, 6, 0));
     w.extend(args);
+    w.extend(tail);
     w.push(S_ENDPGM);
     w
 }
@@ -467,10 +478,14 @@ fn synth_ms() -> Vec<u32> {
 }
 
 fn synth_pair(head: &[u32], tag_and_count: &[u32], args: &[u32], root: Option<RootSig>) -> (Translated, Translated) {
-    let a = MeshInfo { stage: 14, groupshared_bytes: 0, payload_bytes: 16, max_vertices: 0, max_primitives: 0, prim_vectors: 0, topology: 0, num_threads: [32, 1, 1] };
-    let m = MeshInfo { stage: 13, groupshared_bytes: 0, payload_bytes: 16, max_vertices: 128, max_primitives: 128, prim_vectors: 0, topology: 2, num_threads: [128, 1, 1] };
+    synth_pair_with(&synth_as(head, tag_and_count, args), 16, root)
+}
+
+fn synth_pair_with(as_words: &[u32], payload_bytes: u32, root: Option<RootSig>) -> (Translated, Translated) {
+    let a = MeshInfo { stage: 14, groupshared_bytes: 0, payload_bytes, max_vertices: 0, max_primitives: 0, prim_vectors: 0, topology: 0, num_threads: [32, 1, 1] };
+    let m = MeshInfo { stage: 13, groupshared_bytes: 0, payload_bytes, max_vertices: 128, max_primitives: 128, prim_vectors: 0, topology: 2, num_threads: [128, 1, 1] };
     let outs = vec![sig("SV_Position", 1, 3, 0, 0xf), sig("TEXCOORD", 0, 1, 1, 0xf)];
-    let ta = translate(&synth(Stage::Amplification, &synth_as(head, tag_and_count, args), a, vec![], root)).unwrap_or_else(|e| panic!("synthetic AS: {e}"));
+    let ta = translate(&synth(Stage::Amplification, as_words, a, vec![], root)).unwrap_or_else(|e| panic!("synthetic AS: {e}"));
     let tm = translate(&synth(Stage::Mesh, &synth_ms(), m, outs, None)).unwrap_or_else(|e| panic!("synthetic MS: {e}"));
     (ta, tm)
 }
@@ -557,4 +572,80 @@ fn gpu_synthetic_amplification_root_load_after_a_branch_still_uses_s0_s1() {
     assert_eq!(fault, [0, 0, 0], "global-memory misses");
     assert_eq!(px, want);
     assert_eq!(samples, 4, "mesh groups launched");
+}
+
+const CLEAR: [u32; 4] = [5, 6, 7, 8];
+
+#[test]
+fn gpu_synthetic_amplification_group_count_zero_launches_nothing() {
+    let (ta, tm) = synth_pair(&[], &[sop2(0, 10, 4, LIT), 0x100, sop1(3, 11, 4)], &dword_args(), None);
+    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let mut want = [CLEAR; W];
+    want[4] = [0x101, 0, 1, 0x5a5a];
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(px, want);
+    let (ta, tm) = synth_pair(&[], &[sop2(0, 10, 4, LIT), 0x100, sop1(3, 11, ic(0))], &dword_args(), None);
+    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(px, [CLEAR; W]);
+}
+
+#[test]
+fn gpu_synthetic_amplification_four_mesh_groups_each_see_their_own_payload() {
+    let (ta, tm) = synth_pair(&[], &[sop2(0, 10, 4, LIT), 0x100, sop1(3, 11, ic(4))], &dword_args(), None);
+    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let mut want = [CLEAR; W];
+    for (i, p) in want.iter_mut().enumerate() {
+        let (g, m) = (i as u32 / 4, i as u32 % 4);
+        *p = [0x100 + g, m, g, 0x5a5a];
+    }
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(px, want);
+}
+
+#[test]
+fn gpu_synthetic_amplification_payload_stride_rounds_up_to_sixteen() {
+    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &dword_args(), &[], 48);
+    let (ta, tm) = synth_pair_with(&words, 40, None);
+    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let mut want = [CLEAR; W];
+    want[0] = [0x100, 0, 0, 0x5a5a];
+    want[4] = [0x101, 0, 1, 0x5a5a];
+    want[5] = [0x101, 1, 1, 0x5a5a];
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(px, want);
+}
+
+#[test]
+fn gpu_synthetic_amplification_group_count_from_a_byte_store() {
+    let st = global(24, 10, 12, 2, 0);
+    let tail = [vop1(1, 12, LIT), 2, st[0], st[1]];
+    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop1(3, 11, ic(0))], &dword_args(), &tail, 16);
+    let (ta, tm) = synth_pair_with(&words, 16, None);
+    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let mut want = [CLEAR; W];
+    for (i, g, m) in [(0, 0, 0), (1, 0, 1), (4, 1, 0), (5, 1, 1)] {
+        want[i] = [0x100 + g, m, g, 0x5a5a];
+    }
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(px, want);
+}
+
+#[test]
+fn gpu_synthetic_amplification_sub_dword_payload_stores_merge() {
+    let mut tail = vec![];
+    for (op, off, data) in [(24, 5, 0xab), (26, 10, 0xbeef), (25, 12, 0x00cd_0000), (27, 14, 0x7e57_0000)] {
+        let st = global(op, 10, 12, 6, 0);
+        tail.extend([vop1(1, 12, LIT), data, st[0] | off, st[1]]);
+    }
+    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &dword_args(), &tail, 16);
+    let (ta, tm) = synth_pair_with(&words, 16, None);
+    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let px_for = |g: u32, m: u32| [0xab00 | g, m, 0xbeef_0000 | g, 0x7e57_5acd];
+    let mut want = [CLEAR; W];
+    want[0] = px_for(0, 0);
+    want[4] = px_for(1, 0);
+    want[5] = px_for(1, 1);
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(px, want);
 }

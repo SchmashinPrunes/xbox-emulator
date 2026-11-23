@@ -215,7 +215,7 @@ impl<'a> Emitter<'a> {
             let _ = writeln!(h, "uint tb_ring_get(int k) {{ return k >= 0 ? tb_pl.w[k] : tb_args[-1 - k]; }}");
             let _ = writeln!(
                 h,
-                "void tb_ring_put(int k, uint v, uint m) {{ if (m == 0xffffffffu) {{ if (k >= 0) tb_pl.w[k] = v; else tb_args[-1 - k] = v; return; }} uint o; if (k >= 0) {{ InterlockedAnd(tb_pl.w[k], ~m, o); InterlockedOr(tb_pl.w[k], v & m, o); }} else {{ InterlockedAnd(tb_args[-1 - k], ~m, o); InterlockedOr(tb_args[-1 - k], v & m, o); }} }}"
+                "void tb_ring_put(int k, uint v, uint m) {{ if (m == 0xffffffffu) {{ if (k >= 0) tb_pl.w[k] = v; else tb_args[-1 - k] = v; return; }} uint o; if (k >= 0) {{ tb_pl.w[k] = (tb_pl.w[k] & ~m) | (v & m); }} else {{ InterlockedAnd(tb_args[-1 - k], ~m, o); InterlockedOr(tb_args[-1 - k], v & m, o); }} }}"
             );
         }
         h.push_str(&VA_HELPERS.replace("TB_GLOBAL_SPACE", &GLOBAL_SPACE.to_string()));
