@@ -14,6 +14,7 @@ mod mimg;
 mod mimg_rdna2;
 mod mtbuf;
 mod mtbuf_hw;
+mod mubuf_wide;
 mod trans16;
 mod trans32;
 mod rootmem;
