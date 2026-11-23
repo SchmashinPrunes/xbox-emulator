@@ -660,6 +660,22 @@ fn gpu_synthetic_amplification_sub_dword_payload_stores_merge() {
 }
 
 #[test]
+fn gpu_synthetic_amplification_merges_bytes_written_by_different_lanes() {
+    let store = global(24, 10, 12, 6, 0);
+    let tail = [vop2(0x1b, 10, ic(3), 0), vop2(0x25, 12, ic(0x11), 10), store[0] | 12, store[1]];
+    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &tail, 16);
+    let (ta, tm) = synth_pair_with(&words, 16, None);
+    let (pixels, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+
+    let mut expected = [CLEAR; W];
+    for (pixel, group, mesh) in [(0, 0, 0), (4, 1, 0), (5, 1, 1)] {
+        expected[pixel] = [0x100 + group, mesh, group, 0x1413_1211];
+    }
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(pixels, expected);
+}
+
+#[test]
 fn gpu_synthetic_mesh_sub_dword_payload_loads_extend_correctly() {
     let st = global(28, 10, 12, 6, 0);
     let as_tail = [vop1(1, 12, LIT), 0x8081_82f3, st[0] | 12, st[1]];
