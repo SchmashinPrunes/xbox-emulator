@@ -554,3 +554,26 @@ fn ds_permute_with_lds_is_refused() {
     };
     assert!(e.contains("groupshared"), "{e}");
 }
+
+#[test]
+fn glc_and_dlc_buffer_accesses_are_globally_coherent() {
+    let load = |glc: u32, dlc: u32| [0xe000_0000 | (0x0c << 18) | (dlc << 15) | (glc << 14) | (1 << 12), 1 | (10 << 8) | (2 << 16) | (0x80 << 24)];
+    let atomic = [0xe000_0000 | (0x32 << 18) | (1 << 14) | (1 << 12), 1 | (10 << 8) | (2 << 16) | (0x80 << 24)];
+    let glc_then_atomic = [load(1, 0), atomic].concat();
+    let cases: [(Vec<u32>, &[u32], bool); 7] = [
+        (load(0, 0).to_vec(), &[10], false),
+        (load(1, 0).to_vec(), &[10], true),
+        (load(0, 1).to_vec(), &[10], true),
+        (load(1, 1).to_vec(), &[10], true),
+        (atomic.to_vec(), &[10], false),
+        (load(1, 0).to_vec(), &[], false),
+        (glc_then_atomic, &[], true),
+    ];
+    for (k, (op, outs, want)) in cases.into_iter().enumerate() {
+        let h = translate(&cs_extract(&cs_prog(&op, outs), T)).unwrap_or_else(|e| panic!("case {k}: {e}")).hlsl;
+        let uavs: Vec<&str> = h.lines().filter(|l| l.contains(": register(u")).collect();
+        assert!(!uavs.is_empty(), "case {k}:\n{h}");
+        assert!(uavs.iter().all(|l| l.starts_with("globallycoherent ") == want), "case {k}:\n{h}");
+        assert_eq!(h.matches("globallycoherent").count(), if want { uavs.len() } else { 0 }, "case {k}:\n{h}");
+    }
+}
