@@ -97,6 +97,7 @@ mod sample_pattern;
 mod pso_serial;
 mod dma_list;
 mod cmdlist_x;
+mod cl_edition;
 mod query_x;
 mod gpu_va;
 mod fill;
