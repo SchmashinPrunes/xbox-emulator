@@ -1430,6 +1430,7 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
     };
     let profile = match (em.sm6_minor, profile.split('_').next()) {
         (0, _) => profile,
+        (2, Some("ps")) => "ps_6_2",
         (6, Some("ps")) => "ps_6_6",
         (6, Some("vs")) => "vs_6_6",
         (6, Some("cs")) => "cs_6_6",
@@ -4672,8 +4673,26 @@ impl<'a> Emitter<'a> {
             sig_lookup(&self.ex.input_sig, reg, chan)
         };
         let val = if let Some((ei, k)) = found {
-            let acc = format!("i.i{ei}.{}", XYZW[k]);
-            if self.ex.input_sig[ei].comp_type == 3 { format!("asuint({acc})") } else { format!("(uint)({acc})") }
+            let e = &self.ex.input_sig[ei];
+            let field = format!("i.i{ei}");
+            let component = XYZW[k];
+            let acc = if ins.op == 2 && e.sysval == 0 && matches!(e.comp_type, 1 | 2) {
+                let [Opnd::Vgpr(selector)] = ins.src.as_slice() else {
+                    return Err("v_interp_mov_f32 missing parameter selector".into());
+                };
+                match selector & 3 {
+                    vertex @ (0 | 1) => {
+                        self.sm6_minor = self.sm6_minor.max(2);
+                        let vertex = vertex + 1;
+                        format!("GetAttributeAtVertex({field}, {vertex}).{component}")
+                    }
+                    2 => format!("{field}.{component}"),
+                    _ => return Err("v_interp_mov_f32 reserved parameter selector 3".into()),
+                }
+            } else {
+                format!("{field}.{component}")
+            };
+            if e.comp_type == 3 { format!("asuint({acc})") } else { format!("(uint)({acc})") }
         } else if chan == 3 {
             "0x3f800000u".to_string()
         } else {

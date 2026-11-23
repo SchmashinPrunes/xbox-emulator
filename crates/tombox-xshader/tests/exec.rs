@@ -440,6 +440,36 @@ fn merged_vertex_shader_seeds_wave_info_for_the_program_wave_size() {
     }
 }
 
+#[test]
+fn v_interp_mov_integer_reads_all_three_vertices() {
+    let mut program = Prog::new();
+    program.raw(&[0xc802_0002, 0xc806_0100, 0xc80a_0201, 0xc80e_0301]);
+    let mut ps = shader(&program.words());
+    ps.input_sig = vec![
+        sig("SV_Position", 1, 3, 0, 0xf),
+        sig("TEXCOORD", 0, 1, 1, 0xf),
+    ];
+    ps.input_sig[1].rw_mask = 0xf;
+    let ps = translate(&ps).unwrap();
+    let pixel_code = dxc::compile(&ps.hlsl, &dxc::profile_for(ps.profile))
+        .unwrap_or_else(|e| panic!("{e}\n{}", ps.hlsl));
+    let vertex_code = dxc::compile(
+        "struct O { float4 pos : SV_Position; nointerpolation uint4 value : TEXCOORD0; };
+         O main(uint id : SV_VertexID) {
+             float2 p = float2((id << 1) & 2, id & 2);
+             O o;
+             o.pos = float4(p * float2(2, -2) + float2(-1, 1), 0, 1);
+             o.value = uint4(0x11u, 0x44u, 0x80u, 0x80000000u) + id * 0x100u;
+             return o;
+         }",
+        "vs_6_0",
+    ).unwrap();
+    let mut c = CTX.get_or_init(|| Mutex::new(unsafe { ctx_new() })).lock().unwrap_or_else(|e| e.into_inner());
+    let rs = c.rs;
+    let result = unsafe { draw_graphics(&mut c, &pixel_code, rs, &|_| {}, &|_| {}, Some((&vertex_code, &[]))) };
+    assert_eq!(result.unwrap_or_else(|e| panic!("{e}\n{}", ps.hlsl)), [0x11, 0x144, 0x280, 0x80000200]);
+}
+
 pub fn hlsl_of(words: &[u32]) -> Result<String, String> {
     translate(&shader(words)).map(|t| t.hlsl)
 }
