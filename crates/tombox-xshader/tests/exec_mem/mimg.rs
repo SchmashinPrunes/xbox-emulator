@@ -861,3 +861,21 @@ fn image_gather4_bias_and_dmask_refusals() {
     let t = translate(&extract(&words, false)).expect("single-channel gather4_lz translates");
     assert!(t.hlsl.contains(".GatherAlpha("), "{}", t.hlsl);
 }
+
+#[test]
+fn image_dim_refusals_are_explicit() {
+    for (op, needle) in [
+        (mimg(0x00, 0xf, 3, 1, 4, 0, 12), "image dim 3 unsupported for load/store"),
+        (mimg(0x00, 0xf, 7, 1, 4, 0, 12), "image dim 7 unsupported for load/store"),
+        (mimg(0x0e, 0xf, 7, 1, 4, 0, 12), "image dim 7 unsupported for get_resinfo"),
+        (mimg(0x60, 0xf, 6, 6, 4, 0, 12), "image dim 6 unsupported for get_lod"),
+    ] {
+        let mut pre = Prog::new();
+        pre.vv(1, fb(0.5)).vv(2, fb(0.5)).vv(3, fb(0.5)).vv(4, fb(0.5));
+        let words = build(&pre, &op, 4, 4, false);
+        match translate(&extract(&words, false)) {
+            Ok(t) => panic!("expected {needle}, got:\n{}", t.hlsl),
+            Err(e) => assert!(e.contains(needle), "expected {needle} in error: {e}"),
+        }
+    }
+}
