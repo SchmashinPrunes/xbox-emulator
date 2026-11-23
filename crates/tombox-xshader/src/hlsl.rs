@@ -7755,7 +7755,7 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID) {{");
             let merged = ex.stage == Stage::Vertex && self.merged_es();
             if merged {
                 self.regs.insert("s3".to_string());
-                let _ = writeln!(init, "    s3 = 0x40u;");
+                let _ = writeln!(init, "    s3 = {}u;", if self.wave64 { "0x40" } else { "0x20" });
             }
             let attr_base = if merged { 9 } else { 4 };
             let mut group = 0usize;

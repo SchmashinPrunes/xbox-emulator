@@ -417,6 +417,29 @@ fn d3d12_takes_a_changed_container_only_with_the_recomputed_dxil_hash() {
     }
 }
 
+#[test]
+fn merged_vertex_shader_seeds_wave_info_for_the_program_wave_size() {
+    let build = |bfm: u32, cselect: u32| {
+        let mut words = vec![sop2(0x28, 32, 3, LIT), 0x80000, sop2(bfm, 126, 32, ic(0)), sopc(0x06, 32, ic(if bfm == 0x24 { 32 } else { 64 })), sop2(cselect, 126, ic(-1), 126)];
+        words.extend_from_slice(&[0xbe84_2104, 0xf800_00cf, 0x0c0b_0a09, 0xf800_0a0f, 0x0909_0805, S_ENDPGM]);
+        let mut vs = shader(&words);
+        vs.stage = Stage::Vertex;
+        vs.input_sig = vec![sig("POSITION", 0, 3, 0, 0xf), sig("SV_VertexID", 6, 1, 1, 1), sig("SV_InstanceID", 8, 1, 2, 1)];
+        vs.input_sig[0].rw_mask = 0xf;
+        vs.output_sig = vec![sig("SV_Position", 1, 3, 0, 0xf), sig("TEXCOORD", 0, 1, 1, 0xf)];
+        translate(&vs).unwrap().hlsl
+    };
+    let wave32 = build(0x24, 0x0a);
+    assert!(wave32.contains("s3 = 0x20u;") && !wave32.contains("s3 = 0x40u;"), "{wave32}");
+    assert!(wave32.contains("v5 = (uint)(i.i1);") && wave32.contains("v8 = (uint)(i.i2);"), "{wave32}");
+    let wave64 = build(0x25, 0x0b);
+    assert!(wave64.contains("s3 = 0x40u;") && !wave64.contains("s3 = 0x20u;"), "{wave64}");
+    if dxc::available() {
+        dxc::compile(&wave32, "vs_6_0").expect("dxc compiles the wave32 merged vertex shader");
+        dxc::compile(&wave64, "vs_6_0").expect("dxc compiles the wave64 merged vertex shader");
+    }
+}
+
 pub fn hlsl_of(words: &[u32]) -> Result<String, String> {
     translate(&shader(words)).map(|t| t.hlsl)
 }
