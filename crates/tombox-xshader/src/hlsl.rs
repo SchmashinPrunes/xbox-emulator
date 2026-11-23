@@ -553,6 +553,7 @@ struct Emitter<'a> {
     samp_cmp: BTreeSet<u32>,
     uav: BTreeMap<u32, u32>,       // slot -> dim
     sbuf: BTreeMap<(bool, u32), u32>, // (is_uav, slot) -> element dwords used
+    fssm_strides: BTreeMap<(bool, u32), u32>,
     tbuf: BTreeSet<(bool, u32)>,      // typed buffers (is_uav, slot)
     tbuf_uint: BTreeSet<u32>,         // typed UAV slots whose element must be uint (atomics)
     /// Inferred integer element type of typed buffers: (is_uav, slot) -> 1 uint, 2 sint.
@@ -1308,6 +1309,30 @@ pub fn translate_with_inference(ex: &ShaderExtract) -> Result<Translated, String
     translate(&inferred)
 }
 
+fn fssm_buffer_strides(ex: &ShaderExtract) -> BTreeMap<(bool, u32), u32> {
+    let mut out: BTreeMap<(bool, u32), u32> = BTreeMap::new();
+    let Ok(Some(b)) = crate::fssm_bind::parse(&ex.fssm) else { return out };
+    let mut conflict: BTreeSet<(bool, u32)> = BTreeSet::new();
+    for u in &b.uses {
+        let is_uav = match u.class {
+            crate::fssm_bind::Class::Srv => false,
+            crate::fssm_bind::Class::Uav => true,
+            _ => continue,
+        };
+        if u.stride < 4 || u.stride % 4 != 0 || u.register > 0xffff {
+            continue;
+        }
+        let key = (is_uav, u.register);
+        if *out.entry(key).or_insert(u.stride) != u.stride {
+            conflict.insert(key);
+        }
+    }
+    for k in conflict {
+        out.remove(&k);
+    }
+    out
+}
+
 pub fn translate_with_fssm_root(ex: &ShaderExtract) -> Result<Translated, String> {
     translate_linked_with_fssm_root(ex, None)
 }
@@ -1393,6 +1418,7 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
         samp_cmp: BTreeSet::new(),
         uav: BTreeMap::new(),
         sbuf: BTreeMap::new(),
+        fssm_strides: fssm_buffer_strides(ex),
         tbuf: BTreeSet::new(),
         tbuf_uint: BTreeSet::new(),
         tbuf_ty: BTreeMap::new(),
@@ -2286,6 +2312,9 @@ impl<'a> Emitter<'a> {
     /// data it uploads); no 16-byte buffer in the comparison was touched like that.
     /// A heuristic (TECHNICAL_DEBT).
     fn sbuf_words(&self, key: (bool, u32)) -> u32 {
+        if let Some(stride) = self.fssm_strides.get(&key) {
+            return stride / 4;
+        }
         let raw = self.sbuf.get(&key).copied().unwrap_or(1).max(1);
         match raw {
             1 => 1,
