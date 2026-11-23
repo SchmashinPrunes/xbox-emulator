@@ -40,6 +40,7 @@ mod bufref;
 mod user_data;
 mod smem_bounds;
 mod tess;
+mod static_sampler;
 pub use smem_bounds::{CBFIT_CBUFFER, CBFIT_RAW};
 pub use tess::{passthrough_hull, Partitioning, PassthroughHull, PASSTHROUGH_VS};
 pub mod infer;
@@ -539,6 +540,8 @@ struct Emitter<'a> {
     res: HashMap<usize, Vec<Res>>, // per-instruction resolved resources
     cb_size: BTreeMap<u32, u32>,   // slot -> dwords
     vs_lat: HashMap<usize, [smem_bounds::Lat; 3]>,
+    cfg: Option<(Vec<std::ops::Range<usize>>, Vec<Vec<usize>>)>,
+    sampler_literals: Option<HashMap<usize, [u32; 4]>>,
     uses_smem_bounds: bool,
     cb_lim: HashMap<u32, Option<u64>>,
     tex: BTreeMap<u32, u32>,       // slot -> dim
@@ -1367,6 +1370,8 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
         res: HashMap::new(),
         cb_size: BTreeMap::new(),
         vs_lat: HashMap::new(),
+        cfg: None,
+        sampler_literals: None,
         uses_smem_bounds: false,
         cb_lim: HashMap::new(),
         tex: BTreeMap::new(),
@@ -1844,6 +1849,8 @@ impl<'a> Emitter<'a> {
                 v
             })
             .collect();
+        self.cfg = Some((ranges.clone(), succs.clone()));
+        self.sampler_literals = None;
 
         // Fixpoint (analysis only: recordings are rolled back afterwards).
         let saved = (
@@ -2758,7 +2765,14 @@ impl<'a> Emitter<'a> {
                         self.gather_ssamp.insert(idx, w(1).zip(w(2)));
                     }
                     if ins.mnemonic.starts_with("image_sample") || ins.mnemonic.starts_with("image_gather") || ins.mnemonic == "image_get_lod" {
-                        let fixed = if sym.get(&ss).is_none() && written.contains(&ss) { self.static_sampler(idx, ss)? } else { None };
+                        let fixed = if sym.get(&ss).is_none() && written.contains(&ss) {
+                            match self.fssm_static_sampler(idx, ss)? {
+                                Some(slot) => Some(slot),
+                                None => self.static_sampler(idx, ss)?,
+                            }
+                        } else {
+                            None
+                        };
                         let samp_c = match fixed {
                             Some(slot) => vec![(0xffu8, slot)],
                             None => self.desc_candidates(sym.get(&ss), 16).ok_or_else(|| {
