@@ -20,6 +20,7 @@ mod trans16;
 mod trans32;
 mod rootmem;
 mod smem_nr;
+mod sop1_dst;
 mod user_data;
 mod vfetch;
 
