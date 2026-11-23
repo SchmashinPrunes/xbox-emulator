@@ -17,6 +17,7 @@ pub mod hlsl;
 #[cfg(windows)]
 pub mod dxc;
 pub mod meta;
+pub mod fssm_bind;
 pub mod dxil_meta;
 pub mod dxil_hash;
 pub mod decls;
