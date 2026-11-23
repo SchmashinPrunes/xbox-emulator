@@ -302,6 +302,16 @@ fn note_gather_lod_blind(hash: u64, offsets: &[u32]) {
     record("d3d12_xs", "shader_xlat", &format!("GATHER4_L: hash={hash:016x} image_gather4_l at ISA {offsets:#x?} picks its footprint mip without the sampler LOD_BIAS/MIN_LOD/MAX_LOD: the S# is not visible to the translator"));
 }
 
+fn note_unknowns(hash: u64, unknowns: &[String]) {
+    static SEEN: Mutex<std::collections::BTreeSet<u64>> = Mutex::new(std::collections::BTreeSet::new());
+    if unknowns.is_empty() || !SEEN.lock().map_or(false, |mut s| s.insert(hash)) {
+        return;
+    }
+    for u in unknowns {
+        record("d3d12_xs", "shader_xlat", &format!("UNKNOWN hash={hash:016x}: {u}"));
+    }
+}
+
 pub(crate) fn runtime_source(blob: &[u8], hash: u64, rtfmt: &[u8; 8], link: &InputInterp, root: Option<&[u8]>, mode: &tombox_xshader::pack_key::Mode) -> Result<RtSrc, String> {
     let mut ex = tombox_xshader::extract(blob).map_err(|e| {
         dump_failure(hash, blob, None, &e);
@@ -314,6 +324,7 @@ pub(crate) fn runtime_source(blob: &[u8], hash: u64, rtfmt: &[u8; 8], link: &Inp
         dump_failure(hash, blob, None, &e);
         e
     })?;
+    note_unknowns(hash, &t.unknowns);
     if mode.cbv_raw.rewrites() {
         if let Some((slot, lim, _)) = crate::cbv_raw::clamp_knob().filter(|k| k.2.map_or(true, |h| h == hash)) {
             t.hlsl = crate::cbv_raw::clamp_reads(&t.hlsl, slot, lim);

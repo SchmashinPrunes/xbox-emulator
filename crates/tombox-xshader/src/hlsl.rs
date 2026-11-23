@@ -60,6 +60,7 @@ pub struct Translated {
     pub cb_limits: BTreeMap<u32, u64>,
     pub fmask: Vec<(u32, u32, u32)>,
     pub gather_lod_blind: Vec<u32>,
+    pub unknowns: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -639,8 +640,10 @@ struct Emitter<'a> {
     uses_global: bool,
     uses_scratch: bool,
     mode_use: mode::ModeUse,
+    init_mode: u32,
     out_interp: InputInterp,
     user_data: bool,
+    unknowns: BTreeSet<String>,
 }
 
 /// SGPR spills through vector lanes.
@@ -1276,15 +1279,19 @@ pub fn translate_linked(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> R
             return translate_linked(&inferred, feeds_ps);
         }
     }
-    translate_linked_with(ex, feeds_ps, false)
+    translate_linked_with(ex, feeds_ps, false, None)
+}
+
+pub fn translate_with_pgm_rsrc1(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>, rsrc1: u32) -> Result<Translated, String> {
+    translate_linked_with(ex, feeds_ps, false, Some(rsrc1))
 }
 
 pub fn translate_user_data(ex: &ShaderExtract) -> Result<Translated, String> {
-    translate_linked_with(ex, None, true)
+    translate_linked_with(ex, None, true, None)
 }
 
 pub fn translate_linked_user_data(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> Result<Translated, String> {
-    translate_linked_with(ex, feeds_ps, true)
+    translate_linked_with(ex, feeds_ps, true, None)
 }
 
 pub fn translate_with_inference(ex: &ShaderExtract) -> Result<Translated, String> {
@@ -1304,14 +1311,14 @@ pub fn translate_with_fssm_root(ex: &ShaderExtract) -> Result<Translated, String
 
 pub fn translate_linked_with_fssm_root(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> Result<Translated, String> {
     if ex.root_sig.is_some() || ex.has_root_sig {
-        return translate_linked_with(ex, feeds_ps, false);
+        return translate_linked_with(ex, feeds_ps, false, None);
     }
     let b = crate::fssm_bind::parse(&ex.fssm)?.ok_or("no root signature and no FSSM binding table")?;
     let mut with = ex.clone();
     with.root_sig = Some(b.root_signature());
     match b.user_base(ex.stage)? {
-        Some(base) => translate_with(&with, &out_interp_for(ex, feeds_ps), Some(base), BTreeSet::new(), false),
-        None => translate_linked_with(&with, feeds_ps, false),
+        Some(base) => translate_with(&with, &out_interp_for(ex, feeds_ps), Some(base), BTreeSet::new(), false, mode::container_pgm_rsrc1(ex)),
+        None => translate_linked_with(&with, feeds_ps, false, None),
     }
 }
 
@@ -1322,15 +1329,16 @@ fn out_interp_for(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> InputIn
     }
 }
 
-fn translate_linked_with(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>, user_data: bool) -> Result<Translated, String> {
+fn translate_linked_with(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>, user_data: bool, rsrc1: Option<u32>) -> Result<Translated, String> {
+    let rsrc1 = rsrc1.or_else(|| mode::container_pgm_rsrc1(ex));
     let out_interp = out_interp_for(ex, feeds_ps);
-    match translate_with(ex, &out_interp, None, BTreeSet::new(), user_data) {
-        Err(e) if disassemble(&ex.isa).iter().take(16).any(|i| i.mnemonic == "s_swappc_b64") => translate_with(ex, &out_interp, Some(8), BTreeSet::new(), user_data).map_err(|e2| if e2.contains("not a buffer descriptor") || e2.contains("not a root table") { e } else { e2 }),
+    match translate_with(ex, &out_interp, None, BTreeSet::new(), user_data, rsrc1) {
+        Err(e) if disassemble(&ex.isa).iter().take(16).any(|i| i.mnemonic == "s_swappc_b64") => translate_with(ex, &out_interp, Some(8), BTreeSet::new(), user_data, rsrc1).map_err(|e2| if e2.contains("not a buffer descriptor") || e2.contains("not a root table") { e } else { e2 }),
         r => r,
     }
 }
 
-fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_override: Option<usize>, uav_force: BTreeSet<u32>, user_data: bool) -> Result<Translated, String> {
+fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_override: Option<usize>, uav_force: BTreeSet<u32>, user_data: bool, rsrc1: Option<u32>) -> Result<Translated, String> {
     let (profile, is_ps) = match ex.stage {
         Stage::Vertex => ("vs_5_0", false),
         Stage::Pixel => ("ps_5_0", true),
@@ -1441,11 +1449,22 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
         uses_global: false,
         uses_scratch: false,
         mode_use: mode::ModeUse::default(),
+        init_mode: rsrc1.map_or(mode::MODE_DEFAULT, mode::mode_from_pgm_rsrc1),
         out_interp: out_interp.clone(),
         user_data,
+        unknowns: BTreeSet::new(),
     };
     em.vreg_array = em.insns.iter().any(|i| i.mnemonic.starts_with("v_movrel") || i.mnemonic == "v_swaprel_b32");
-    em.mode_use = mode::analyze(&em.insns);
+    em.mode_use = mode::analyze(&em.insns, em.init_mode as u8);
+    if rsrc1.is_none() {
+        if let Some(i) = em.insns.iter().find(|i| mode::f16_omod(i)) {
+            em.unknowns.insert(format!(
+                "f16 output modifier at {:#x}: it acts only with MODE IEEE 0 and f16 denormals flushed, the initial MODE (PGM_RSRC1 FLOAT_MODE, DX10_CLAMP, IEEE_MODE) is not located in this container, MODE {:#x} is assumed",
+                i.offset,
+                mode::MODE_DEFAULT
+            ));
+        }
+    }
     em.plan_lds64();
     if em.mode_use.sp || em.mode_use.dp {
         em.hw_regs.insert(1);
@@ -1468,7 +1487,7 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
     if !clash.is_empty() {
         let mut force = em.uav_force.clone();
         force.extend(clash);
-        return translate_with(ex, out_interp, user_base_override, force, user_data);
+        return translate_with(ex, out_interp, user_base_override, force, user_data, rsrc1);
     }
     if is_ps {
         em.find_export_epilogs();
@@ -1515,7 +1534,7 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
         (_, Some("ms")) => "ms_6_8",
         _ => profile,
     };
-    Ok(Translated { hlsl, entry: "main", profile, mip_uavs: em.uav_mips.iter().copied().collect(), mip_srvs: em.tex_mips.iter().copied().collect(), needs_gmem: em.uses_bvh, needs_global: em.uses_global, uses_typed_atomic64: !em.uav_u64.is_empty() || !em.tbuf_u64.is_empty() || !em.sbuf_u64.is_empty(), user_data_base: em.ud_active().then(|| em.user_base()), cb_limits: em.cb_limits(), fmask: em.fmask_loc.iter().copied().collect(), gather_lod_blind: em.gather_blind.iter().copied().collect() })
+    Ok(Translated { hlsl, entry: "main", profile, mip_uavs: em.uav_mips.iter().copied().collect(), mip_srvs: em.tex_mips.iter().copied().collect(), needs_gmem: em.uses_bvh, needs_global: em.uses_global, uses_typed_atomic64: !em.uav_u64.is_empty() || !em.tbuf_u64.is_empty() || !em.sbuf_u64.is_empty(), user_data_base: em.ud_active().then(|| em.user_base()), cb_limits: em.cb_limits(), fmask: em.fmask_loc.iter().copied().collect(), gather_lod_blind: em.gather_blind.iter().copied().collect(), unknowns: em.unknowns.iter().cloned().collect() })
 }
 
 impl<'a> Emitter<'a> {
@@ -7781,7 +7800,7 @@ impl<'a> Emitter<'a> {
             h.push_str(&BVH_HELPERS.replace("TB_GMEM_SPACE", &TB_GMEM_SPACE.to_string()));
         }
         for id in &self.hw_regs {
-            let _ = writeln!(h, "static uint tb_hw{id} = {:#x}u;", if *id == 1 { 0xf0u32 } else { 0 });
+            let _ = writeln!(h, "static uint tb_hw{id} = {:#x}u;", if *id == 1 { self.init_mode } else { 0 });
         }
         if self.mode_use.sp || self.mode_use.dp || mode::uses_mad(&self.insns) {
             h.push_str(mode::MAD_HELPERS);
