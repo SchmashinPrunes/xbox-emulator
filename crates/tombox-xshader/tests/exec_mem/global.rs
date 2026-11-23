@@ -175,7 +175,7 @@ fn global_routing_and_refusals() {
         assert_eq!(got, m);
     }
     let mut p = Prog::new();
-    p.raw(&g(0x1c, 1, 0, 1, 2, 0x7d, 0));
+    p.raw(&g(0x30, 1, 0, 1, 2, 0x7d, 0));
     let mut w = p.w.clone();
     w.push(S_ENDPGM);
     let e = translate(&cs_extract(&w, 64)).err().unwrap_or_default();
