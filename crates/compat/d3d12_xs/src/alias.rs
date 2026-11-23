@@ -1010,8 +1010,9 @@ mod tests {
             let r = VirtualAlloc(core::ptr::null_mut(), 0x400_0000, 0x2000, 0x01) as u64;
             assert!(r != 0);
             let small = tex_desc(256, 256, 28, 0x1);
+            let small_size = allocation_info(dev, &small).0.max(0x4_0000);
             let mut first: *mut c_void = core::ptr::null_mut();
-            let m0 = create_placed_x(dev, r, &small, 0x4_0000, 0x4, core::ptr::null(), &mut first).expect("first placement opens the reservation-wide span");
+            let m0 = create_placed_x(dev, r, &small, small_size, 0x4, core::ptr::null(), &mut first).expect("first placement opens the reservation-wide span");
             assert_eq!(m0.kind, Kind::Local);
             let mut depth = tex_desc(1920, 1080, 19, 0x2);
             depth[0x24..0x28].copy_from_slice(&2u32.to_le_bytes());
@@ -1029,11 +1030,11 @@ mod tests {
             assert_ne!(md.heap, m0.heap, "the oversize depth must not sit in the shared reservation heap");
             let next_va = dva + round_up(console, PLACEMENT_ALIGN);
             let mut n: *mut c_void = core::ptr::null_mut();
-            let mn = create_placed_x(dev, next_va, &small, 0x4_0000, 0x4, core::ptr::null(), &mut n).expect("next title placement");
+            let mn = create_placed_x(dev, next_va, &small, small_size, 0x4, core::ptr::null(), &mut n).expect("next title placement");
             assert!(mn.heap != md.heap || mn.offset >= md.offset + pc.0, "next placement {:#x}+{:#x} overlaps the depth's PC tail", mn.heap, mn.offset);
             assert_eq!((mn.heap, mn.offset), (m0.heap, next_va - r));
             let mut a: *mut c_void = core::ptr::null_mut();
-            let ma = create_placed_x(dev, dva, &small, 0x4_0000, 0x4, core::ptr::null(), &mut a).expect("alias inside the console extent");
+            let ma = create_placed_x(dev, dva, &small, small_size, 0x4, core::ptr::null(), &mut a).expect("alias inside the console extent");
             assert_eq!((ma.heap, ma.offset), (md.heap, 0), "title aliases inside the console extent share the depth's memory");
             for x in [first, d, n, a] {
                 vcall!(x, 2, fn() -> u32);
