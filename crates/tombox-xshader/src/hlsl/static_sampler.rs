@@ -33,12 +33,10 @@ fn writes(ins: &Insn) -> Writes {
     let w0 = ins.raw.first().copied().unwrap_or(0);
     let regs = |base: Option<u8>, n: u8| base.map_or(Writes::None, |b| Writes::Regs(b, n));
     match ins.enc {
-        Enc::Sop1 | Enc::Sop2 | Enc::Sopk => {
-            if !m.starts_with("s_") || m.starts_with("s_movreld") || matches!(m, "s_swappc_b64" | "s_setpc_b64" | "s_rfe_b64" | "s_call_b64") {
-                return Writes::All;
-            }
-            regs(sgpr_dst(ins), if wide(m) { 2 } else { 1 })
-        }
+        Enc::Sop1 if matches!(ins.op, 0x20..=0x22 | 0x2a | 0x2e..=0x31) => Writes::All,
+        Enc::Sopk if matches!(ins.op, 0x11 | 0x16) => Writes::All,
+        Enc::Sopk if m.starts_with("s_cmpk_") || m.starts_with("s_setreg") || m.starts_with("s_waitcnt_") || m == "s_version" => Writes::None,
+        Enc::Sop1 | Enc::Sop2 | Enc::Sopk => regs(sgpr_dst(ins), if m.starts_with("s_") && !wide(m) { 1 } else { 2 }),
         Enc::Sopc => Writes::None,
         Enc::Sopp => Writes::None,
         Enc::Smem => {
@@ -341,13 +339,19 @@ mod tests {
         let readlane_s17 = [0xd760_0011u32, 0x0001_0101];
         let buffer_load_s16_x4 = [0xf428_0400u32, 0xfa00_0000];
         let swappc = [0xbe80_2104u32];
-        for clobber in [&carry_out_s18[..], &readlane_s17, &buffer_load_s16_x4, &swappc] {
+        let movreld_s16 = [0xbe90_3014u32];
+        let unnamed_sop1_into_s18 = [0xbe92_3a14u32];
+        for clobber in [&carry_out_s18[..], &readlane_s17, &buffer_load_s16_x4, &swappc, &movreld_s16, &unnamed_sop1_into_s18] {
             let w = [&SET_S16[..], clobber, &SAMPLE, &[END]].concat();
             assert_eq!(at_sample(&w), None, "{clobber:x?}");
         }
         let unrelated_carry_out_s40 = [0xd70f_2800u32, 0x0002_0101];
-        let w = [&SET_S16[..], &unrelated_carry_out_s40, &SAMPLE, &[END]].concat();
-        assert!(at_sample(&w).is_some());
+        let unnamed_sop1_into_s40 = [0xbea8_3a14u32];
+        let compare_k_on_s16 = [0xb190_0092u32];
+        for keep in [&unrelated_carry_out_s40[..], &unnamed_sop1_into_s40, &compare_k_on_s16] {
+            let w = [&SET_S16[..], keep, &SAMPLE, &[END]].concat();
+            assert_eq!(at_sample(&w), Some([0x92, 0xc0_0000, 0x1850_0000, 0]), "{keep:x?}");
+        }
     }
 
     #[test]
