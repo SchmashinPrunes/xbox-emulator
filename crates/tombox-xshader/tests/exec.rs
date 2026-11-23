@@ -1098,6 +1098,34 @@ fn scalar_sop1() {
     c.run_both("sop1");
 }
 
+#[test]
+fn scalar_quadmask() {
+    let mut cases = Cases::new();
+    for (mask, expected) in [(0, 0), (8, 1), (0x8000_0000, 0x80), (0x1020_3040, 0xaa), (u32::MAX, 0xff)] {
+        let scc = nz(u64::from(expected));
+        s1(&mut cases, "s_quadmask_b32", 0x2c, mask, u32::MAX, scc ^ 1, expected, scc);
+    }
+
+    for (mask, expected) in [
+        (0, 0),
+        (8, 1),
+        (0x0000_0008_0000_0000, 0x0100),
+        (0x8000_0000_0000_0000, 0x8000),
+        (0x1000_0001_0000_0100, 0x8104),
+        (u64::MAX, 0xffff),
+    ] {
+        let scc = nz(expected);
+        s1w(&mut cases, "s_quadmask_b64", 0x2d, mask, u64::MAX, scc ^ 1, expected, scc);
+    }
+
+    let mut pre = pr();
+    pre.sv(10, 0x0000_0100).sv(11, 0x1000_0001);
+    let mut post = pr();
+    post.s2v(0, 10).s2v(1, 11).scc_to_v(2);
+    cases.add("s_quadmask_b64", &pre, &[sop1(0x2d, 10, 10)], &post, &[0x8104, 0, 1]);
+    cases.run_both("scalar_quadmask");
+}
+
 fn saveexec(c: &mut Cases, m: &'static str, op: u32, a: u32, f: fn(u32, u32) -> u32) {
     let exec0 = 1u32;
     let newx = f(a, exec0) & 1;

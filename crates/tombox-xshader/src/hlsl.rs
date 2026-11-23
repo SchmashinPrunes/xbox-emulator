@@ -2881,6 +2881,18 @@ impl<'a> Emitter<'a> {
         Ok(())
     }
 
+    fn quadmask32(&mut self, source: &str) -> String {
+        let bits = format!("t{}", self.tmp);
+        self.tmp += 1;
+        self.line(&format!("uint {bits} = {source};"));
+        self.line(&format!("{bits} |= {bits} >> 1;"));
+        self.line(&format!("{bits} = ({bits} | ({bits} >> 2)) & 0x11111111u;"));
+        self.line(&format!("{bits} = ({bits} | ({bits} >> 3)) & 0x03030303u;"));
+        self.line(&format!("{bits} = ({bits} | ({bits} >> 6)) & 0x000f000fu;"));
+        self.line(&format!("{bits} = ({bits} | ({bits} >> 12)) & 0xffu;"));
+        bits
+    }
+
     /// Condition under which a SOPP branch opcode is taken (None = not a branch).
     fn branch_cond(op: u32) -> Option<&'static str> {
         Some(match op {
@@ -3828,6 +3840,23 @@ impl<'a> Emitter<'a> {
                         self.touch(&dh);
                         self.ws(&dh, &format!("t{t}h"))?;
                         self.line(&format!("scc = ((t{t}l | t{t}h) != 0u) ? 1u : 0u;"));
+                        Ok(())
+                    }
+                    "s_quadmask_b32" | "s_quadmask_b64" => {
+                        let low = self.quadmask32(&a);
+                        let result = if m == "s_quadmask_b64" {
+                            let source_high = hi(&s[0]);
+                            self.touch(&source_high);
+                            let high = self.quadmask32(&r(&source_high)?);
+                            format!("({low} | ({high} << 8))")
+                        } else {
+                            low
+                        };
+                        self.ws(&d, &result)?;
+                        if m == "s_quadmask_b64" {
+                            self.ws(&hi(&d), "0u")?;
+                        }
+                        self.line(&format!("scc = ({result} != 0u) ? 1u : 0u;"));
                         Ok(())
                     }
                     // D[S0[4:0]] = 0 / 1
