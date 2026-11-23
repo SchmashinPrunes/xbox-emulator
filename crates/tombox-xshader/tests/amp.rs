@@ -6,8 +6,9 @@ mod d3d;
 
 use core::ffi::c_void;
 use d3d::{Gpu, Guid};
-use tombox_xshader::hlsl::translate;
-use tombox_xshader::{dxc, extract, rdna2, Stage};
+use tombox_xshader::hlsl::{translate, Translated};
+use tombox_xshader::meta::{GsInfo, MeshInfo, RootParam, RootParamKind, RootSig, SigElement};
+use tombox_xshader::{dxc, extract, rdna2, ShaderExtract, Stage};
 
 extern "system" {
     fn LoadLibraryA(n: *const u8) -> *mut c_void;
@@ -170,17 +171,19 @@ fn bytecode(b: &[u8]) -> Vec<u8> {
     v
 }
 
-unsafe fn root_signature(gpu: &Gpu) -> *mut c_void {
+unsafe fn root_signature(gpu: &Gpu, consts: u32) -> *mut c_void {
     const SPACE: u32 = 4_000_003;
-    let mut params = [0u8; 32 * 4];
+    let mut params = [0u8; 32 * 5];
     for (i, (ty, reg)) in [(2u32, 0u32), (4, 0), (4, 1), (4, 2)].iter().enumerate() {
         let p = &mut params[i * 32..i * 32 + 32];
         p[0..4].copy_from_slice(&ty.to_le_bytes());
         p[8..12].copy_from_slice(&reg.to_le_bytes());
         p[12..16].copy_from_slice(&SPACE.to_le_bytes());
     }
+    params[128..132].copy_from_slice(&1u32.to_le_bytes());
+    params[144..148].copy_from_slice(&consts.to_le_bytes());
     let mut desc = [0u8; 40];
-    desc[0..4].copy_from_slice(&4u32.to_le_bytes());
+    desc[0..4].copy_from_slice(&(4 + (consts != 0) as u32).to_le_bytes());
     desc[8..16].copy_from_slice(&(params.as_ptr() as u64).to_le_bytes());
     let d3d12 = LoadLibraryA(b"d3d12.dll\0".as_ptr());
     let ser: unsafe extern "system" fn(*const u8, u32, *mut *mut c_void, *mut *mut c_void) -> i32 =
@@ -194,15 +197,20 @@ unsafe fn root_signature(gpu: &Gpu) -> *mut c_void {
     rs
 }
 
+static WARP_RENDER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 unsafe fn render(as_name: &str, ms_name: &str, groups: u32) -> Result<([[u32; 4]; W], [u32; 3]), String> {
-    let ta = hlsl_of(as_name);
-    let tm = hlsl_of(ms_name);
+    render_pair(&hlsl_of(as_name), &hlsl_of(ms_name), groups, &[])
+}
+
+unsafe fn render_pair(ta: &Translated, tm: &Translated, groups: u32, consts: &[u32]) -> Result<([[u32; 4]; W], [u32; 3]), String> {
     let asb = dxc::compile(&ta.hlsl, &dxc::profile_for(ta.profile)).map_err(|e| format!("{e}\n{}", ta.hlsl))?;
     let msb = dxc::compile(&tm.hlsl, &dxc::profile_for(tm.profile)).map_err(|e| format!("{e}\n{}", tm.hlsl))?;
     let psb = dxc::compile(PS, "ps_6_5")?;
+    let _warp = std::env::var_os("TOMBOX_EXEC_HW").is_none().then(|| WARP_RENDER.lock().unwrap_or_else(|e| e.into_inner()));
     let (mut gpu, kind) = mesh_gpu();
     eprintln!("amplification render on {kind}");
-    let rs = root_signature(&gpu);
+    let rs = root_signature(&gpu, consts.len() as u32);
     let mut s = Vec::new();
     sub(&mut s, 0, &(rs as u64).to_le_bytes());
     sub(&mut s, 24, &bytecode(&asb));
@@ -263,6 +271,9 @@ unsafe fn render(as_name: &str, ms_name: &str, groups: u32) -> Result<([[u32; 4]
     vcall!(l, 42, fn(u32, u64) -> (), 1, Gpu::gpu_va(win));
     vcall!(l, 42, fn(u32, u64) -> (), 2, Gpu::gpu_va(win));
     vcall!(l, 42, fn(u32, u64) -> (), 3, Gpu::gpu_va(fault));
+    if !consts.is_empty() {
+        vcall!(l, 36, fn(u32, u32, *const u32, u32) -> (), 4, consts.len() as u32, consts.as_ptr(), 0);
+    }
     vcall!(l, 25, fn(*mut c_void) -> (), pso);
     let vp = [0f32, 0., W as f32, 1., 0., 1.];
     vcall!(l, 21, fn(u32, *const f32) -> (), 1, vp.as_ptr());
@@ -309,6 +320,190 @@ fn gpu_console_amplification_feeds_payload_and_group_counts_to_the_mesh_stage() 
     want[0] = [0x100, 0, 0, 0x5a5a];
     want[4] = [0x101, 0, 1, 0x5a5a];
     want[5] = [0x101, 1, 1, 0x5a5a];
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(px, want);
+}
+
+const S_ENDPGM: u32 = 0xbf81_0000;
+const LIT: u32 = 0xff;
+const EXEC: u32 = 126;
+const M0: u32 = 124;
+const F_NEG1: u32 = 243;
+const F_ONE: u32 = 242;
+const SNULL: u32 = 0x7d;
+const TRI: u32 = 64 | (65 << 10) | (66 << 20);
+
+fn v(n: u32) -> u32 {
+    256 + n
+}
+
+fn ic(n: i32) -> u32 {
+    if n >= 0 { 128 + n as u32 } else { 192 + (-n) as u32 }
+}
+
+fn vop1(op: u32, vdst: u32, src0: u32) -> u32 {
+    0x7e00_0000 | (vdst << 17) | (op << 9) | src0
+}
+
+fn vop2(op: u32, vdst: u32, src0: u32, vsrc1: u32) -> u32 {
+    (op << 25) | (vdst << 17) | (vsrc1 << 9) | src0
+}
+
+fn vopc(op: u32, src0: u32, vsrc1: u32) -> u32 {
+    0x7c00_0000 | (op << 17) | (vsrc1 << 9) | src0
+}
+
+fn vop3(op: u32, vdst: u32, srcs: [u32; 3]) -> [u32; 2] {
+    [0xd400_0000 | (op << 16) | vdst, srcs[0] | (srcs[1] << 9) | (srcs[2] << 18)]
+}
+
+fn sop1(op: u32, sdst: u32, s0: u32) -> u32 {
+    0xbe80_0000 | (sdst << 16) | (op << 8) | s0
+}
+
+fn sop2(op: u32, sdst: u32, s0: u32, s1: u32) -> u32 {
+    0x8000_0000 | (op << 23) | (sdst << 16) | (s1 << 8) | s0
+}
+
+fn sopp(op: u32, imm: u16) -> u32 {
+    0xbf80_0000 | (op << 16) | imm as u32
+}
+
+fn exp(target: u32, en: u32, done: bool, s: [u32; 4]) -> [u32; 2] {
+    [0xf800_0000 | ((done as u32) << 11) | (target << 4) | en, s[0] | (s[1] << 8) | (s[2] << 16) | (s[3] << 24)]
+}
+
+fn smem(op: u32, sdata: u32, sbase: u32, imm: u32) -> [u32; 2] {
+    [0xf400_0000 | (op << 18) | (sdata << 6) | (sbase >> 1), (SNULL << 25) | imm]
+}
+
+fn global(op: u32, vaddr: u32, vdata: u32, saddr: u32, vdst: u32) -> [u32; 2] {
+    [0xdc00_0000 | (op << 18) | (2 << 14), vaddr | (vdata << 8) | (saddr << 16) | (vdst << 24)]
+}
+
+fn sig(name: &str, sysval: u32, comp_type: u32, register: u32, mask: u8) -> SigElement {
+    SigElement { name: name.into(), index: 0, sysval, comp_type, register, mask, rw_mask: 0 }
+}
+
+fn synth(stage: Stage, words: &[u32], mesh: MeshInfo, outs: Vec<SigElement>, root: Option<RootSig>) -> ShaderExtract {
+    let isa: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    ShaderExtract {
+        stage,
+        shader_model: (6, 5),
+        bitcode_stripped: true,
+        fssm: Vec::new(),
+        entry: Some("main".into()),
+        isa_data: isa.clone(),
+        isa,
+        isa_offset_in_fssm: 0,
+        isa_preamble: [0; 4],
+        psv_numthreads: None,
+        has_input_sig: false,
+        has_output_sig: !outs.is_empty(),
+        has_psv0: true,
+        has_root_sig: root.is_some(),
+        input_sig: vec![],
+        output_sig: outs,
+        prim_sig: Vec::new(),
+        resources: Vec::new(),
+        gs_info: Some(GsInfo { input_primitive: 0, output_topology: 0, max_vertex_count: 0, mesh: Some(mesh) }),
+        root_sig: root,
+    }
+}
+
+fn synth_as(head: &[u32], tag_and_count: &[u32]) -> Vec<u32> {
+    let mut w = head.to_vec();
+    w.extend([sop1(3, 6, 3), sop1(3, 7, ic(0)), sop1(3, 3, ic(0))]);
+    w.extend([sop2(31, 2, 2, ic(8)), sop2(31, 6, 6, ic(8))]);
+    w.extend([sop2(30, 8, 4, ic(4)), sop2(0, 2, 2, 8), sop2(4, 3, 3, ic(0)), sop2(0, 6, 6, 8), sop2(4, 7, 7, ic(0))]);
+    w.push(sop2(30, 9, 4, ic(2)));
+    w.extend(tag_and_count);
+    w.extend([vop1(1, 10, ic(0)), vop1(1, 4, 9), vop1(1, 5, 10), vop1(1, 6, 4), vop1(1, 7, LIT), 0x5a5a, vop1(1, 8, 11)]);
+    w.extend(global(30, 10, 4, 6, 0));
+    w.extend(global(28, 10, 8, 2, 0));
+    w.push(S_ENDPGM);
+    w
+}
+
+fn synth_ms() -> Vec<u32> {
+    let mut w = vec![sop1(4, EXEC, ic(-1))];
+    w.extend(vop3(0x365, 0, [ic(-1), ic(0), 0]));
+    w.extend(vop3(0x366, 0, [ic(-1), v(0), 0]));
+    w.extend([sop2(0x27, 3, 3, LIT), 0x40018]);
+    w.extend(vop3(0x346, 0, [3, ic(6), v(0)]));
+    w.extend([vop1(2, 2, v(5)), sop2(32, 14, 2, ic(7))]);
+    w.extend([sop2(31, 12, 10, ic(36)), vop1(1, 20, ic(0))]);
+    w.extend(global(14, 20, 0, 12, 24));
+    w.push(0xbf8c_3f70);
+    w.extend([sop1(4, 20, EXEC), vopc(0xd2, ic(0), 0), sopp(8, 3), sop1(3, M0, LIT), (1 << 12) | 67, sopp(0x10, 9), sop1(4, EXEC, 20)]);
+    w.extend([vop2(0x25, 28, 14, 24), vop1(6, 10, v(28))]);
+    w.extend([vop2(8, 10, LIT, 10), 0.25f32.to_bits(), vop2(3, 10, LIT, 10), (-0.875f32).to_bits()]);
+    w.extend([vop1(1, 11, ic(0)), vop1(1, 12, LIT), (-0.125f32).to_bits(), vop1(1, 13, LIT), 0.125f32.to_bits()]);
+    w.extend([vopc(0xc2, LIT, 0), 64, vop2(1, 11, v(11), 12), vopc(0xc2, LIT, 0), 65, vop2(1, 11, v(11), 13)]);
+    w.extend([vop2(3, 1, v(10), 11), vop1(1, 2, LIT), 4.0f32.to_bits(), vopc(0xc2, LIT, 0), 66, vop2(1, 3, F_NEG1, 2)]);
+    w.extend([vop1(1, 4, ic(0)), vop1(1, 6, F_ONE), vop1(1, 7, v(25)), vop1(1, 8, 14), vop1(1, 9, LIT), TRI]);
+    w.extend(exp(12, 0xf, false, [1, 3, 4, 6]));
+    w.extend(exp(20, 0x1, false, [9, 0, 0, 0]));
+    w.extend(exp(32, 0xf, true, [7, 8, 26, 27]));
+    w.push(S_ENDPGM);
+    w
+}
+
+fn synth_pair(head: &[u32], tag_and_count: &[u32], root: Option<RootSig>) -> (Translated, Translated) {
+    let a = MeshInfo { stage: 14, groupshared_bytes: 0, payload_bytes: 16, max_vertices: 0, max_primitives: 0, prim_vectors: 0, topology: 0, num_threads: [32, 1, 1] };
+    let m = MeshInfo { stage: 13, groupshared_bytes: 0, payload_bytes: 16, max_vertices: 128, max_primitives: 128, prim_vectors: 0, topology: 2, num_threads: [128, 1, 1] };
+    let outs = vec![sig("SV_Position", 1, 3, 0, 0xf), sig("TEXCOORD", 0, 1, 1, 0xf)];
+    let ta = translate(&synth(Stage::Amplification, &synth_as(head, tag_and_count), a, vec![], root)).unwrap_or_else(|e| panic!("synthetic AS: {e}"));
+    let tm = translate(&synth(Stage::Mesh, &synth_ms(), m, outs, None)).unwrap_or_else(|e| panic!("synthetic MS: {e}"));
+    (ta, tm)
+}
+
+#[test]
+fn synthetic_pair_disassembles_to_the_ring_abi_shape() {
+    let dis = |w: &[u32]| rdna2::disassemble(&w.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>());
+    let a = dis(&synth_as(&smem(1, 12, 0, 0), &[]));
+    let m = dis(&synth_ms());
+    for (insns, want) in [
+        (&a, &["s_load_dwordx2", "s_lshl_b64", "s_addc_u32", "flat_store_dwordx4", "flat_store_dword", "s_endpgm"][..]),
+        (&m, &["v_readfirstlane_b32", "s_lshl_b64", "flat_load_dwordx4", "s_sendmsg", "v_cvt_f32_u32", "v_cndmask_b32", "exp"][..]),
+    ] {
+        let names: Vec<&str> = insns.iter().map(|i| i.mnemonic.as_str()).collect();
+        for x in want {
+            assert!(names.iter().any(|y| y.starts_with(x)), "{x} missing from {names:?}");
+        }
+    }
+    let flat: Vec<_> = a.iter().chain(&m).filter(|i| i.enc == rdna2::Enc::Flat).collect();
+    assert_eq!(flat.len(), 3);
+    assert!(flat.iter().all(|i| i.aux.mask == 2 && matches!(i.src.get(2), Some(rdna2::Opnd::Sgpr(_)))), "{flat:?}");
+}
+
+#[test]
+fn gpu_synthetic_amplification_feeds_payload_and_group_counts_to_the_mesh_stage() {
+    let (ta, tm) = synth_pair(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], None);
+    assert!(ta.hlsl.contains("struct TbPayload { uint w[4]; };"), "{}", ta.hlsl);
+    assert!(tm.hlsl.contains("in payload TbPayload tb_pl"), "{}", tm.hlsl);
+    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let mut want = [[5, 6, 7, 8]; W];
+    want[0] = [0x100, 0, 0, 0x5a5a];
+    want[4] = [0x101, 0, 1, 0x5a5a];
+    want[5] = [0x101, 1, 1, 0x5a5a];
+    assert_eq!(fault, [0, 0, 0], "global-memory misses");
+    assert_eq!(px, want);
+}
+
+#[test]
+fn gpu_synthetic_amplification_reads_root_constants_through_s0_s1() {
+    let root = RootSig { version: 2, flags: 0, params: vec![RootParam { visibility: 0, kind: RootParamKind::Constants { register: 0, space: 0, num32: 2 } }], num_static_samplers: 0, static_samplers: Vec::new() };
+    let mut head = smem(1, 12, 0, 0).to_vec();
+    head.push(0xbf8c_c07f);
+    let (ta, tm) = synth_pair(&head, &[sop2(0, 10, 4, 13), sop1(3, 11, 12)], Some(root));
+    assert!(ta.hlsl.contains("cbuffer TB_RC0 : register(b0, space0)"), "{}", ta.hlsl);
+    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[2, 0x200]) }.unwrap_or_else(|e| panic!("{e}"));
+    let mut want = [[5, 6, 7, 8]; W];
+    want[0] = [0x200, 0, 0, 0x5a5a];
+    want[1] = [0x200, 1, 0, 0x5a5a];
+    want[4] = [0x201, 0, 1, 0x5a5a];
+    want[5] = [0x201, 1, 1, 0x5a5a];
     assert_eq!(fault, [0, 0, 0], "global-memory misses");
     assert_eq!(px, want);
 }
