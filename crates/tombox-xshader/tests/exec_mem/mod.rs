@@ -4,6 +4,7 @@ use tombox_xshader::meta::{RootParam, RootParamKind, RootRange, RootSig};
 
 mod bvh;
 mod branch;
+mod cache_inv;
 mod cfg_fuzz;
 mod ds;
 mod gds;
