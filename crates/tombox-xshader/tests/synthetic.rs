@@ -850,11 +850,63 @@ fn raw_uav_buffer_atomics_share_ubuf_instead_of_overlapping_utb() {
     let t = translate(&ex).expect("raw UAV buffer store + atomic");
     assert!(t.hlsl.contains("ubuf0"), "{}", t.hlsl);
     assert!(!t.hlsl.contains("utb0"), "overlapping utb0 declaration:\n{}", t.hlsl);
-    assert!(t.hlsl.contains("InterlockedOr(ubuf0["), "{}", t.hlsl);
+    assert!(t.hlsl.contains("RWByteAddressBuffer ubuf0"), "{}", t.hlsl);
+    assert!(t.hlsl.contains("ubuf0.InterlockedOr("), "{}", t.hlsl);
+    assert!(t.hlsl.contains("ubuf0.Store("), "{}", t.hlsl);
     if tombox_xshader::dxc::available() {
         let profile = tombox_xshader::dxc::profile_for(t.profile);
         tombox_xshader::dxc::compile(&t.hlsl, &profile).expect("DXC compile");
     }
+}
+
+fn raw_buffer_shader(res_type: u32, range_type: u32, op_word: u32) -> ShaderExtract {
+    let words = [
+        0xf408_0002, 0xfa00_0000,
+        0x7e02_0284,
+        0x7e06_0287,
+        op_word, 0x8000_0301,
+        S_ENDPGM,
+    ];
+    let root = RootSig {
+        version: 2,
+        flags: 0,
+        params: vec![table(range_type, 1, 0)],
+        num_static_samplers: 0,
+        static_samplers: Vec::new(),
+    };
+    let mut ex = shader(Stage::Compute, &words, vec![], vec![], Some(root));
+    ex.isa_preamble = [0, 64, 1, 1];
+    (ex.has_input_sig, ex.has_output_sig) = (false, false);
+    ex.has_psv0 = true;
+    ex.resources.push(PsvResource { res_type, space: 0, lower: 0, upper: 0, kind: 1 });
+    ex
+}
+
+#[test]
+fn raw_srv_buffer_is_a_byte_address_buffer() {
+    let t = translate(&raw_buffer_shader(4, 0, 0xe030_1014)).expect("raw SRV buffer_load_dword");
+    assert!(t.hlsl.contains("ByteAddressBuffer sbuf0"), "{}", t.hlsl);
+    assert!(!t.hlsl.contains("TbElem_sbuf0"), "{}", t.hlsl);
+    assert!(t.hlsl.contains("= sbuf0.Load(((t"), "{}", t.hlsl);
+    if tombox_xshader::dxc::available() {
+        let profile = tombox_xshader::dxc::profile_for(t.profile);
+        tombox_xshader::dxc::compile(&t.hlsl, &profile).expect("DXC compile");
+    }
+}
+
+#[test]
+fn structured_srv_buffer_keeps_its_element_struct() {
+    let t = translate(&raw_buffer_shader(5, 0, 0xe030_1014)).expect("structured SRV buffer_load_dword");
+    assert!(t.hlsl.contains("StructuredBuffer<TbElem_sbuf0> sbuf0"), "{}", t.hlsl);
+    assert!(!t.hlsl.contains("ByteAddressBuffer"), "{}", t.hlsl);
+}
+
+#[test]
+fn raw_buffer_with_idxen_is_refused() {
+    let Err(e) = translate(&raw_buffer_shader(7, 1, 0xe0e8_2000)) else { panic!("raw UAV atomic with IDXEN translated") };
+    assert!(e.contains("raw buffer ubuf0 addressed with IDXEN"), "{e}");
+    let Err(e) = translate(&raw_buffer_shader(7, 1, 0xe070_2000)) else { panic!("raw UAV store with IDXEN translated") };
+    assert!(e.contains("raw buffer ubuf0 addressed with IDXEN"), "{e}");
 }
 
 #[test]

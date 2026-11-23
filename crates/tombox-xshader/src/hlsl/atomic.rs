@@ -1,8 +1,9 @@
+use super::bufref::BufRef;
 use super::{r, Emitter};
 use crate::rdna2::Opnd;
 
 impl<'a> Emitter<'a> {
-    pub(super) fn atomic_rmw(&mut self, op: &str, target: &str, vdata: Opnd) -> Result<String, String> {
+    pub(super) fn atomic_rmw(&mut self, op: &str, target: &BufRef, vdata: Opnd) -> Result<String, String> {
         self.touch(&vdata);
         let val = r(&vdata)?;
         let t = self.tmp;
@@ -13,7 +14,8 @@ impl<'a> Emitter<'a> {
                 _ => return Err("bad vdata".into()),
             };
             self.touch(&cmp);
-            self.line(&format!("uint t{t} = 0u; if (exec_lo & 1u) {{ InterlockedCompareExchange({target}, {}, {val}, t{t}); }}", r(&cmp)?));
+            let cas = target.call("InterlockedCompareExchange", &format!("{}, {val}, t{t}", r(&cmp)?));
+            self.line(&format!("uint t{t} = 0u; if (exec_lo & 1u) {{ {cas} }}"));
             return Ok(format!("t{t}"));
         }
         let c = format!("t{t}c");
@@ -26,7 +28,9 @@ impl<'a> Emitter<'a> {
         };
         if let Some(new) = looped {
             self.line(&format!(
-                "uint t{t} = 0u; if (exec_lo & 1u) {{ uint {c} = {target}; [allow_uav_condition] for (uint t{t}i = 0u; t{t}i < 1024u; t{t}i++) {{ uint t{t}p = 0u; InterlockedCompareExchange({target}, {c}, {new}, t{t}p); if (t{t}p == {c}) break; {c} = t{t}p; }} t{t} = {c}; }}"
+                "uint t{t} = 0u; if (exec_lo & 1u) {{ uint {c} = {}; [allow_uav_condition] for (uint t{t}i = 0u; t{t}i < 1024u; t{t}i++) {{ uint t{t}p = 0u; {} if (t{t}p == {c}) break; {c} = t{t}p; }} t{t} = {c}; }}",
+                target.read(),
+                target.call("InterlockedCompareExchange", &format!("{c}, {new}, t{t}p"))
             ));
             return Ok(format!("t{t}"));
         }
@@ -41,7 +45,8 @@ impl<'a> Emitter<'a> {
             "swap" => ("InterlockedExchange", val),
             other => return Err(format!("atomic {other} unsupported")),
         };
-        self.line(&format!("uint t{t} = 0u; if (exec_lo & 1u) {{ {func}({target}, {arg}, t{t}); }}"));
+        let call = target.call(func, &format!("{arg}, t{t}"));
+        self.line(&format!("uint t{t} = 0u; if (exec_lo & 1u) {{ {call} }}"));
         Ok(format!("t{t}"))
     }
 

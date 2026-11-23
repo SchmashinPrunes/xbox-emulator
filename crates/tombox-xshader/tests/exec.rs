@@ -641,7 +641,11 @@ pub fn run_res_psv(words: &[u32], root: tombox_xshader::meta::RootSig, buf: Opti
         let hlsl = &t.hlsl;
         let mut stride = 0u32;
         let mut fmt = 42u32;
-        if hlsl.contains("RWStructuredBuffer<TbElem_ubuf0>") {
+        let mut raw = false;
+        if hlsl.contains("RWByteAddressBuffer ubuf0") {
+            fmt = 39;
+            raw = true;
+        } else if hlsl.contains("RWStructuredBuffer<TbElem_ubuf0>") {
             let n: u32 = hlsl.split("struct TbElem_ubuf0 { uint w[").nth(1).and_then(|s| s.split(']').next()).and_then(|s| s.parse().ok()).unwrap_or(1);
             stride = n * 4;
             fmt = 0;
@@ -683,6 +687,7 @@ pub fn run_res_psv(words: &[u32], root: tombox_xshader::meta::RootSig, buf: Opti
                     let elems = nbytes as u32 / esz - first as u32;
                     ud[16..20].copy_from_slice(&elems.to_le_bytes());
                     ud[20..24].copy_from_slice(&stride.to_le_bytes());
+                    ud[32..36].copy_from_slice(&(raw as u32).to_le_bytes());
                     vcall!(g.device, 19, fn(*mut c_void, *mut c_void, *const u8, usize) -> (), ubuf, core::ptr::null_mut(), ud.as_ptr(), base + slot as usize * vinc);
                 }
             }
@@ -1806,12 +1811,10 @@ fn mubuf_atomic_scalar_offset() {
         let mut cs = Vec::new();
         for (m, op, f) in atoms {
             for &(a1, a2, imm, scalar, offen, idxen, sreg) in &forms {
-                let stride = match (psv.is_empty(), imm / 4 + 1) {
-                    (true, _) | (false, 1) => 1,
-                    (false, 2..=7) => 4,
-                    (false, words) => words.div_ceil(4) * 4,
-                };
-                let w = if idxen { a1 * stride + (a2 * offen as u32 + scalar + imm) / 4 } else { (a1 * offen as u32 + scalar + imm) / 4 } as usize;
+                if idxen && !psv.is_empty() {
+                    continue;
+                }
+                let w = if idxen { a1 + (a2 * offen as u32 + scalar + imm) / 4 } else { (a1 * offen as u32 + scalar + imm) / 4 } as usize;
                 let at = |k: usize| BUF.get(k).copied().unwrap_or(0);
                 let (old, data) = (at(w), 0x10);
                 for glc in [true, false] {
@@ -1977,6 +1980,10 @@ fn buffer_mubuf() {
         }
     }
     run_buf_cases("mubuf", &cs);
+    let raw = tombox_xshader::meta::PsvResource { res_type: 7, space: 0, lower: 0, upper: 7, kind: 1 };
+    let flat: Vec<BufCase> = cs.into_iter().filter(|c| c.op[0] & (1 << 13) == 0 && !c.m.contains("_format_")).collect();
+    assert!(flat.len() > 60, "raw-view case count {}", flat.len());
+    run_buf_cases_psv("mubuf_raw_view", &flat, &[raw]);
 }
 
 #[test]
