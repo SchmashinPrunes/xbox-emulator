@@ -9,6 +9,8 @@ const M: &str = "xmem";
 pub const XMEM_LARGE_PAGES: u32 = 0x2000_0000;
 pub const XMEM_64K_PAGES: u32 = 0x2040_0000;
 pub const XMEM_PAGE: usize = 0x1_0000;
+pub const MEM_REPLACE_PLACEHOLDER: u32 = 0x4000;
+pub const MEM_RESERVE_PLACEHOLDER: u32 = 0x4_0000;
 
 pub fn page_granularity(alloc_type: u32) -> usize {
     if alloc_type & XMEM_64K_PAGES == XMEM_64K_PAGES {
@@ -38,6 +40,31 @@ pub fn win_protect(protect: u32) -> u32 {
     base | (protect & PAGE_GUARD)
 }
 
+pub fn placeholder_alloc_type(alloc_type: u32) -> Option<u32> {
+    if alloc_type & MEM_RESERVE_PLACEHOLDER != 0 {
+        Some(MEM_RESERVE | MEM_RESERVE_PLACEHOLDER)
+    } else if alloc_type & MEM_REPLACE_PLACEHOLDER != 0 {
+        Some(MEM_RESERVE | MEM_REPLACE_PLACEHOLDER | (alloc_type & MEM_COMMIT))
+    } else {
+        None
+    }
+}
+
+fn placeholder_alloc(address: *mut c_void, size: usize, alloc_type: u32, kind: u32, attributes: u64, protect: u32) -> *mut c_void {
+    let gran = page_granularity(alloc_type).max(XMEM_PAGE);
+    let (base, len) = round_range(address as usize, size, gran);
+    let wp = if kind & MEM_RESERVE_PLACEHOLDER != 0 { PAGE_NOACCESS } else { win_protect(protect) };
+    let call = || crate::phys::serialized(|| crate::phys::virtual_alloc2_self(base, len, kind, wp));
+    let p = if kind & MEM_COMMIT != 0 { crate::title_acct::track_commit(Some((base, base + len)), call) } else { call() };
+    if p == 0 {
+        let err = unsafe { GetLastError() };
+        record(M, "XMemVirtualAlloc", &format!("addr={address:p} size={size:#x} type={alloc_type:#x}->{kind:#x} prot={protect:#x}->{wp:#x} attrs={attributes:#x} -> NULL (placeholder, err={err})"));
+    } else if kind & MEM_COMMIT != 0 {
+        crate::write_note::committed(p, len);
+    }
+    p as *mut c_void
+}
+
 pub fn win_alloc_type(alloc_type: u32) -> u32 {
     let t = alloc_type & WIN_ALLOC_TYPE_MASK;
     if t == 0 {
@@ -55,6 +82,9 @@ pub extern "system" fn XMemVirtualAlloc(
     attributes: u64,
     protect: u32,
 ) -> *mut c_void {
+    if let Some(kind) = placeholder_alloc_type(alloc_type) {
+        return placeholder_alloc(address, size, alloc_type, kind, attributes, protect);
+    }
     let gran = page_granularity(alloc_type);
     let (base, len) = round_range(address as usize, size, gran);
     let wt = win_alloc_type(alloc_type);
@@ -516,5 +546,36 @@ mod tests {
         assert_eq!(unsafe { XMemResetWriteWatch(p, 0x4000) }, 0);
         let vfree: unsafe extern "system" fn(usize, usize, u32) -> i32 = unsafe { core::mem::transmute(crate::hooks::vfree_wrapper()) };
         unsafe { vfree(p as usize, 0, MEM_RELEASE) };
+    }
+
+    #[test]
+    fn title_placeholder_reserve_split_replace_and_commit() {
+        let _g = crate::phys::map_test_guard();
+        const PRESERVE: u32 = 0x2;
+        let p = XMemVirtualAlloc(core::ptr::null_mut(), 4 * XMEM_PAGE, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, 7, PAGE_NOACCESS) as usize;
+        assert_ne!(p, 0);
+        assert_ne!(unsafe { VirtualFree(p as *mut c_void, XMEM_PAGE, MEM_RELEASE | PRESERVE) }, 0);
+        assert_ne!(unsafe { VirtualFree((p + XMEM_PAGE) as *mut c_void, 2 * XMEM_PAGE, MEM_RELEASE | PRESERVE) }, 0);
+        let a = XMemVirtualAlloc(p as *mut c_void, XMEM_PAGE, MEM_RESERVE | MEM_REPLACE_PLACEHOLDER | XMEM_64K_PAGES, 0x27, 0x1004) as usize;
+        assert_eq!(a, p);
+        let b = XMemVirtualAlloc((p + XMEM_PAGE) as *mut c_void, 2 * XMEM_PAGE, MEM_RESERVE | MEM_COMMIT | MEM_REPLACE_PLACEHOLDER | XMEM_64K_PAGES, 0x27, PAGE_READWRITE) as usize;
+        assert_eq!(b, p + XMEM_PAGE);
+        unsafe { *((b + XMEM_PAGE + 8) as *mut u32) = 5 };
+        let c = XMemVirtualAlloc(p as *mut c_void, XMEM_PAGE, MEM_COMMIT | XMEM_64K_PAGES, 0, PAGE_READWRITE) as usize;
+        assert_eq!(c, p);
+        unsafe { *((c + 16) as *mut u32) = 6 };
+        assert_eq!(XMemVirtualAlloc(core::ptr::null_mut(), XMEM_PAGE, MEM_RESERVE | MEM_REPLACE_PLACEHOLDER, 0, PAGE_READWRITE) as usize, 0);
+        for q in [p, p + XMEM_PAGE, p + 3 * XMEM_PAGE] {
+            assert_ne!(unsafe { VirtualFree(q as *mut c_void, 0, MEM_RELEASE) }, 0);
+        }
+    }
+
+    #[test]
+    fn placeholder_flags_select_the_virtual_alloc2_kind() {
+        assert_eq!(placeholder_alloc_type(MEM_RESERVE | MEM_RESERVE_PLACEHOLDER), Some(MEM_RESERVE | MEM_RESERVE_PLACEHOLDER));
+        assert_eq!(placeholder_alloc_type(MEM_RESERVE | MEM_RESERVE_PLACEHOLDER | MEM_COMMIT), Some(MEM_RESERVE | MEM_RESERVE_PLACEHOLDER));
+        assert_eq!(placeholder_alloc_type(0x2040_6000), Some(MEM_RESERVE | MEM_REPLACE_PLACEHOLDER));
+        assert_eq!(placeholder_alloc_type(0x2040_7000), Some(MEM_RESERVE | MEM_REPLACE_PLACEHOLDER | MEM_COMMIT));
+        assert_eq!(placeholder_alloc_type(MEM_RESERVE | MEM_COMMIT | XMEM_64K_PAGES), None);
     }
 }
