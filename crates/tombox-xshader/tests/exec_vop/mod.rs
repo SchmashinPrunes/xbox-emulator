@@ -342,7 +342,7 @@ fn fdiv_pre(xv: f64, yv: f64) -> Prog {
     d64v(&mut p, 2, xv);
     d64v(&mut p, 4, yv);
     d64v(&mut p, 18, 1.0);
-    p.raw(&v3b(0x16e, 6, 124, [v(4), v(4), v(2)], 0));
+    p.raw(&v3b(0x16e, 6, 125, [v(4), v(4), v(2)], 0));
     p.raw(&[vop1(0x2f, 8, v(6))]);
     p.raw(&v3d(0x14c, 10, [v(6), v(8), v(18)], 1));
     p.raw(&v3d(0x14c, 12, [v(8), v(10), v(8)], 0));
@@ -533,7 +533,7 @@ fn div_scale_and_fixup_f64() {
         d64v(&mut pre, 4, d);
         let mut post = pr();
         post.raw(&[vop1(1, 0, v(10)), vop1(1, 1, v(11))]);
-        let w = v3b(0x16e, 10, 124, [v(2), v(4), v(2)], 5);
+        let w = v3b(0x16e, 10, 125, [v(2), v(4), v(2)], 5);
         if !r.is_nan() {
             c.add("v_div_scale_f64", &pre, &w, &post, &dw(r));
         }

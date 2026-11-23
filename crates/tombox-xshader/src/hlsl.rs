@@ -1096,6 +1096,20 @@ fn wave_reduce_op(red: &str) -> Option<(&'static str, u8)> {
 /// Translator temporaries from this index up are lane-spill slots (declared up front).
 const LANE_TEMP_BASE: u16 = 10_000;
 
+/// Decode the 8-bit scalar destination field of `v_readlane_b32` (decoded generically as `Vgpr`).
+fn readlane_dst(o: &Opnd) -> Option<Opnd> {
+    match *o {
+        Opnd::Vgpr(n) | Opnd::Sgpr(n) if n <= 105 => Some(Opnd::Sgpr(n)),
+        Opnd::Vgpr(106) | Opnd::VccLo => Some(Opnd::VccLo),
+        Opnd::Vgpr(107) | Opnd::VccHi => Some(Opnd::VccHi),
+        Opnd::Vgpr(124) | Opnd::M0 => Some(Opnd::M0),
+        Opnd::Vgpr(125) | Opnd::Null => Some(Opnd::Null),
+        Opnd::Vgpr(126) | Opnd::ExecLo => Some(Opnd::ExecLo),
+        Opnd::Vgpr(127) | Opnd::ExecHi => Some(Opnd::ExecHi),
+        _ => None,
+    }
+}
+
 fn lower_lane_spills(insns: &mut [Insn]) -> Result<(), String> {
     const READLANE: u32 = 0x360;
     const WRITELANE: u32 = 0x361;
@@ -1154,9 +1168,8 @@ fn lower_lane_spills(insns: &mut [Insn]) -> Result<(), String> {
             ins.src = vec![value];
         } else {
             // The destination field of v_readlane names an SGPR (decoded generically as a VGPR).
-            let d = match ins.dst.first() {
-                Some(Opnd::Vgpr(n)) | Some(Opnd::Sgpr(n)) => *n,
-                other => return Err(format!("v_readlane at {at:#x}: unexpected destination {other:?}")),
+            let Some(d) = ins.dst.first().and_then(readlane_dst) else {
+                return Err(format!("v_readlane at {at:#x}: unexpected destination {:?}", ins.dst.first()));
             };
             let Some(Opnd::Vgpr(v)) = ins.src.first().cloned() else {
                 return Err(format!("v_readlane at {at:#x}: source is not a VGPR"));
@@ -1164,7 +1177,15 @@ fn lower_lane_spills(insns: &mut [Insn]) -> Result<(), String> {
             let Some(&slot) = slots.get(&(v, lane)) else {
                 return Err(format!("v_readlane at {at:#x}: v{v} lane {lane} read before any v_writelane"));
             };
-            ins.dst = vec![Opnd::Sgpr(d)];
+            if d == Opnd::Null {
+                ins.enc = Enc::Vop1;
+                ins.op = 0x00;
+                ins.mnemonic = "v_nop".into();
+                ins.dst.clear();
+                ins.src.clear();
+                continue;
+            }
+            ins.dst = vec![d];
             ins.src = vec![slot];
         }
         ins.enc = Enc::Sop1;
@@ -3205,7 +3226,7 @@ impl<'a> Emitter<'a> {
             match (raw0 >> 8) & 0x7f {
                 c @ 0..=105 => Ok(Opnd::Sgpr(c as u8)),
                 106 => Ok(Opnd::VccLo),
-                124 => Ok(Opnd::Null),
+                125 => Ok(Opnd::Null),
                 c => Err(format!("carry-out register code {c} unsupported")),
             }
         };
@@ -4850,11 +4871,11 @@ impl<'a> Emitter<'a> {
 
     fn emit_vec(&mut self, ins: &Insn) -> Result<(), String> {
         let mut m = ins.mnemonic.clone();
-        let s = &ins.src;
-        let d = ins.dst.first().cloned().ok_or("no dst")?;
         if m == "v_nop" {
             return Ok(());
         }
+        let s = &ins.src;
+        let d = ins.dst.first().cloned().ok_or("no dst")?;
         if self.mode_own(ins)? {
             return Ok(());
         }
@@ -4901,13 +4922,12 @@ impl<'a> Emitter<'a> {
             let t = self.tmp;
             self.tmp += 1;
             if m == "v_readlane_b32" {
-                let sd = match d {
-                    Opnd::Vgpr(n) | Opnd::Sgpr(n) if n <= 105 => Opnd::Sgpr(n),
-                    Opnd::Vgpr(106) | Opnd::VccLo => Opnd::VccLo,
-                    Opnd::Vgpr(126) | Opnd::ExecLo => Opnd::ExecLo,
-                    Opnd::Vgpr(124) | Opnd::Null => return Ok(()),
-                    other => return Err(format!("v_readlane: destination {other:?} unsupported")),
+                let Some(sd) = readlane_dst(&d) else {
+                    return Err(format!("v_readlane: destination {d:?} unsupported"));
                 };
+                if sd == Opnd::Null {
+                    return Ok(());
+                }
                 self.line(&format!("uint t{t} = WaveReadLaneAt({}, {});", r(&s[0])?, self.guest_lane(&lane)));
                 return self.ws(&sd, &format!("t{t}"));
             }
@@ -5660,6 +5680,7 @@ impl<'a> Emitter<'a> {
                 match (ins.raw[0] >> 8) & 0x7f {
                     c @ 0..=105 => Opnd::Sgpr(c as u8),
                     106 => Opnd::VccLo,
+                    125 => Opnd::Null,
                     c => return Err(format!("carry-out register code {c} unsupported")),
                 }
             } else {
@@ -5687,11 +5708,13 @@ impl<'a> Emitter<'a> {
                 format!("t{t}")
             };
             self.wv(&d, &sat)?;
-            self.touch(&cout);
-            self.ws(&cout, &format!("((exec_lo & 1u) != 0u) ? t{t}o : 0u"))?;
-            let ch = hi(&cout);
-            self.touch(&ch);
-            self.ws(&ch, "0u")?;
+            if !matches!(cout, Opnd::Null) {
+                self.touch(&cout);
+                self.ws(&cout, &format!("((exec_lo & 1u) != 0u) ? t{t}o : 0u"))?;
+                let ch = hi(&cout);
+                self.touch(&ch);
+                self.ws(&ch, "0u")?;
+            }
             return Ok(());
         }
         if matches!(m.as_str(), "v_lshlrev_b64" | "v_lshrrev_b64" | "v_ashrrev_i64") {

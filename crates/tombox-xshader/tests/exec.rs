@@ -3234,3 +3234,66 @@ fn merged_vertex_shader_reads_vertex_and_instance_index_from_v5_and_v8() {
         dxc::compile(&h, "vs_6_0").expect("dxc compiles the merged vertex shader");
     }
 }
+
+#[test]
+fn vop3b_null_carry_out() {
+    const M0_SENT: u32 = 0x1357_2468;
+    const VCC_SENT: u32 = 0x55;
+    const SNULL: u32 = 125;
+    let mut c = Cases::new();
+
+    for (m, op, a, b, res) in [
+        ("v_add_co_u32", 0x30fu32, 0xffff_ffffu32, 5u32, 4u32),
+        ("v_sub_co_u32", 0x310, 1, 5, 1u32.wrapping_sub(5)),
+        ("v_subrev_co_u32", 0x319, 1, 5, 5u32.wrapping_sub(1)),
+    ] {
+        let mut pre = pr();
+        pre.vv(1, a).vv(2, b).sv(124, M0_SENT).sv(VCC, VCC_SENT);
+        let mut post = pr();
+        post.raw(&[vop1(1, 0, v(10))]).s2v(1, 124).s2v(2, VCC);
+        c.add(m, &pre, &vop3b(op, 10, SNULL, [v(1), v(2), 0]), &post, &[res, M0_SENT, VCC_SENT]);
+    }
+    {
+        let mut pre = pr();
+        pre.vv(1, 0xffff_ffff).vv(2, 5).sv(124, M0_SENT).sv(VCC, 1);
+        let mut post = pr();
+        post.raw(&[vop1(1, 0, v(10))]).s2v(1, 124).s2v(2, VCC);
+        c.add("v_add_co_ci_u32", &pre, &vop3b(0x128, 10, SNULL, [v(1), v(2), VCC]), &post, &[5, M0_SENT, 1]);
+    }
+    {
+        let (a, b, cc) = (0xffff_ffffu32, 0xffff_ffffu32, 0xffff_ffff_ffff_ffffu64);
+        let wide = a as u128 * b as u128 + cc as u128;
+        let mut pre = pr();
+        pre.vv(2, a).vv(4, b).vv(6, cc as u32).vv(7, (cc >> 32) as u32).sv(124, M0_SENT).sv(VCC, VCC_SENT);
+        let mut post = pr();
+        post.raw(&[vop1(1, 0, v(10)), vop1(1, 1, v(11))]).s2v(2, 124).s2v(3, VCC);
+        c.add("v_mad_u64_u32", &pre, &vop3b(0x176, 10, SNULL, [v(2), v(4), v(6)]), &post, &[wide as u32, (wide >> 32) as u32, M0_SENT, VCC_SENT]);
+
+        let sw = (i32::MAX as i128) * (i32::MAX as i128) + (i64::MAX as i128);
+        let mut pre = pr();
+        pre.vv(2, i32::MAX as u32).vv(4, i32::MAX as u32).vv(6, i64::MAX as u64 as u32).vv(7, (i64::MAX as u64 >> 32) as u32).sv(124, M0_SENT).sv(VCC, VCC_SENT);
+        c.add("v_mad_i64_i32", &pre, &vop3b(0x177, 10, SNULL, [v(2), v(4), v(6)]), &post, &[sw as u64 as u32, (sw as u64 >> 32) as u32, M0_SENT, VCC_SENT]);
+    }
+    {
+        let (x, d, n) = (1e-300f64, 1e-300f64, 1e300f64);
+        let scaled = x * 2f64.powi(128);
+        let mut pre = pr();
+        for (k, val) in [x, d, n].iter().enumerate() {
+            let bits = val.to_bits();
+            pre.vv(2 + 2 * k as u32, bits as u32).vv(3 + 2 * k as u32, (bits >> 32) as u32);
+        }
+        pre.sv(124, M0_SENT).sv(VCC, VCC_SENT);
+        let mut post = pr();
+        post.raw(&[vop1(1, 0, v(10)), vop1(1, 1, v(11))]).s2v(2, 124).s2v(3, VCC);
+        let sb = scaled.to_bits();
+        c.add("v_div_scale_f64", &pre, &vop3b(0x16e, 10, SNULL, [v(2), v(4), v(6)]), &post, &[sb as u32, (sb >> 32) as u32, M0_SENT, VCC_SENT]);
+    }
+    c.run_both("vop3b_null_carry_out");
+
+    for (m, op) in [("v_add_co_u32", 0x30fu32), ("v_mad_u64_u32", 0x176), ("v_div_scale_f64", 0x16e)] {
+        let mut p = pr();
+        p.raw(&vop3b(op, 10, 124, [v(2), v(4), v(6)]));
+        let err = translate(&shader(&p.words())).err().unwrap_or_else(|| panic!("{m} with sdst=124 (m0) should fail"));
+        assert!(err.contains("carry-out register code 124 unsupported"), "{m}: unexpected error: {err}");
+    }
+}
