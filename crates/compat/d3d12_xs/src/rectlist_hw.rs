@@ -413,6 +413,65 @@ fn warp_rectlist_topology_17_on_a_stream_built_pso_covers_all_four_corners() {
     }
 }
 
+#[test]
+#[ignore = "needs D3D12 WARP: cargo test -p d3d12_xs --lib warp_rectlist -- --ignored"]
+fn warp_rectlist_compute_pso_bound_under_topology_17_is_skipped_quietly() {
+    if !gpu_free() {
+        return;
+    }
+    if !tombox_xshader::dxc::available() {
+        println!("DXC not available: WARP rect-list compute test not run");
+        return;
+    }
+    let _g = crate::cl2_state::TEST_PREV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe {
+        let mut k = kit();
+        let saved = crate::cl2_state::test_install(&k.vt);
+        let mut defaults = vec![0usize; 128];
+        defaults[X_DEPTH_BIAS] = BIAS_SENTINEL;
+        crate::cl2_state::install(&k.vt, &defaults);
+        let known = compute_pso(&k, true);
+        let unknown = compute_pso(&k, false);
+        let l = k.list as *mut c_void;
+        crate::cl2_state::on_new_list(l);
+        let topo: unsafe extern "system" fn(*mut c_void, u32) = x(&k, X_TOPOLOGY);
+        topo(l, 17);
+        let set_pso: unsafe extern "system" fn(*mut c_void, *mut c_void) = x(&k, X_PSO);
+        set_pso(l, known as *mut c_void);
+        set_pso(l, unknown as *mut c_void);
+        let mut bad = Vec::new();
+        if crate::rectlist::was_refused(known as u64) {
+            bad.push(format!("registered compute PSO {known:#x} was reported as an unknown rect-list pipeline"));
+        }
+        if !crate::rectlist::was_refused(unknown as u64) {
+            bad.push(format!("unregistered PSO {unknown:#x} was skipped instead of refused"));
+        }
+        let p = pso(&k);
+        let flat = [-0.5f32, 0.5, 0.5, -0.5, 1.0, 1.0, 1.0, 0.0];
+        let img = run(&mut k, p, &[Draw { topology: 17, pso_after_topology: true, c: flat, ..Draw::default() }]);
+        check_rect(&img, &flat, "graphics rect after a compute PSO under topology 17", &mut bad);
+        crate::cl2_state::test_restore(saved);
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+unsafe fn compute_pso(k: &Kit, register: bool) -> usize {
+    let cs = tombox_xshader::dxc::compile("[RootSignature(\"RootFlags(0)\")]\n[numthreads(1, 1, 1)]\nvoid main() {}\n", "cs_6_0").expect("cs");
+    let mut rs: *mut c_void = core::ptr::null_mut();
+    assert!(unsafe { vc!(k.dev, 16, fn(u32, *const u8, usize, *const Guid, *mut *mut c_void) -> i32, 0, cs.as_ptr(), cs.len(), &IID_ROOT_SIGNATURE, &mut rs) } >= 0);
+    let mut d = vec![0u8; crate::pso_serial::COMPUTE_DESC_SIZE];
+    d[0..8].copy_from_slice(&(rs as u64).to_le_bytes());
+    d[0x08..0x10].copy_from_slice(&(cs.as_ptr() as u64).to_le_bytes());
+    d[0x10..0x18].copy_from_slice(&(cs.len() as u64).to_le_bytes());
+    let mut p: *mut c_void = core::ptr::null_mut();
+    let hr = unsafe { vc!(k.dev, 11, fn(*const u8, *const Guid, *mut *mut c_void) -> i32, d.as_ptr(), &IID_PSO, &mut p) };
+    assert!(hr >= 0 && !p.is_null(), "CreateComputePipelineState hr={hr:#010x}");
+    if register {
+        crate::device_x::register_compute(p, &d, std::sync::Arc::new(cs));
+    }
+    p as usize
+}
+
 unsafe fn stream_pso(k: &Kit) -> usize {
     use crate::dbcount::append_sub;
     let shaders = vec![std::sync::Arc::new(k.vs.clone()), std::sync::Arc::new(k.ps.clone())];

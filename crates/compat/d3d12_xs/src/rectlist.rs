@@ -291,6 +291,11 @@ unsafe fn blob<'a>(d: &[u8], o: usize) -> &'a [u8] {
     if p.is_null() || n == 0 || n > 0x100_0000 { &[] } else { unsafe { core::slice::from_raw_parts(p, n) } }
 }
 
+#[cfg(test)]
+pub(crate) fn was_refused(vs_hash: u64) -> bool {
+    REFUSED.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|s| s.contains(&vs_hash))
+}
+
 pub fn refuse(vs_ptr: usize, vs_hash: u64, why: &str) {
     if !REFUSED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashSet::new).insert(vs_hash) {
         return;

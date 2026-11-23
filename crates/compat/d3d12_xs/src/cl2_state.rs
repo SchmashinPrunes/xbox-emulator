@@ -922,6 +922,7 @@ unsafe fn apply_rect(list: *mut c_void) {
         None => match crate::dbcount::stream_rec(pso) {
             Some(r) if r.is_graphics() => unsafe { stream_rect_variant(list, pso, &r) },
             Some(_) => 0,
+            None if crate::device_x::is_compute(pso) || crate::pso_async::is_compute_placeholder(pso) => 0,
             None => {
                 crate::rectlist::refuse(0, pso as u64, &format!("PSO {pso:#x} has no recorded PC description or pipeline stream (unknown pipeline)"));
                 0
