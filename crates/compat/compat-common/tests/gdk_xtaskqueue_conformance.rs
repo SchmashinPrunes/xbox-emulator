@@ -6,9 +6,6 @@ use std::sync::OnceLock;
 mod xtq;
 
 const DIFFERS: &[(&str, &str)] = &[
-    ("verify_cancellation", "XAsyncCancel completes the call itself with E_ABORT, reference leaves it pending until the provider completes it"),
-    ("verify_cleanup_waits_for_work", "XAsyncCancel completes the call itself with E_ABORT, reference leaves it pending until the provider completes it"),
-    ("verify_cleanup_waits_for_work_distributed", "XAsyncCancel completes the call itself with E_ABORT, reference leaves it pending until the provider completes it"),
     ("verify_get_async_status_no_deadlock", "does not finish: a call begun on a block whose previous call has just completed can lose its state"),
     ("verify_no_write_after_get_status_race", "under load, intermittent: the async block is written after XAsyncGetStatus(wait) has returned"),
     ("verify_terminate_waits_for_async_in_flight", "termination finishes while an XAsync call on the queue is still pending"),
