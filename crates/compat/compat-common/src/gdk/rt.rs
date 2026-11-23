@@ -213,7 +213,7 @@ impl Port {
         }
     }
 
-    fn dispatch(&self, timeout_ms: u32) -> bool {
+    fn dispatch(&self, timeout_ms: u32, done: &AtomicBool) -> bool {
         let deadline = (timeout_ms != 0 && timeout_ms != u32::MAX).then(|| Instant::now() + Duration::from_millis(timeout_ms as u64));
         let job = {
             let mut q = self.items.lock().unwrap_or_else(|e| e.into_inner());
@@ -221,7 +221,7 @@ impl Port {
                 if let Some((_, j)) = q.pop_front() {
                     break Some(j);
                 }
-                if self.terminated.load(Ordering::Acquire) || timeout_ms == 0 {
+                if done.load(Ordering::Acquire) || timeout_ms == 0 {
                     break None;
                 }
                 q = match deadline {
@@ -245,10 +245,14 @@ impl Port {
         }
     }
 
-    fn terminate(&self) {
-        self.terminated.store(true, Ordering::Release);
+    fn wake(&self) {
         let _g = self.items.lock().unwrap_or_else(|e| e.into_inner());
         self.cv.notify_all();
+    }
+
+    fn terminate(&self) {
+        self.terminated.store(true, Ordering::Release);
+        self.wake();
     }
 
     fn release(&self) {
@@ -272,6 +276,7 @@ impl Port {
 pub struct Queue {
     work: Arc<Port>,
     completion: Arc<Port>,
+    port_done: [Arc<AtomicBool>; 2],
     refs: AtomicUsize,
     process: bool,
     owns: bool,
@@ -423,6 +428,7 @@ fn new_queue(work: Arc<Port>, completion: Arc<Port>, process: bool, owns: bool) 
     alloc_handle(Arc::new(Queue {
         work,
         completion,
+        port_done: [Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false))],
         refs: AtomicUsize::new(0),
         process,
         owns,
@@ -666,10 +672,12 @@ unsafe extern "system" fn q_duplicate(_t: This, q: usize, out: *mut usize) -> i3
 }
 
 unsafe extern "system" fn q_dispatch(_t: This, q: usize, port: u32, timeout: u32) -> bool {
-    match port_of(q, port) {
-        Some(p) if p.mode != IMMEDIATE => p.dispatch(timeout),
-        _ => false,
+    if port > 1 {
+        return false;
     }
+    let Some(qq) = queue(q) else { return false };
+    let p = if port == 0 { &qq.work } else { &qq.completion };
+    if p.mode != IMMEDIATE { p.dispatch(timeout, &qq.port_done[port as usize]) } else { false }
 }
 
 unsafe extern "system" fn q_close(_t: This, q: usize) {
@@ -697,14 +705,20 @@ unsafe extern "system" fn q_terminate(_t: This, q: usize, wait: bool, ctx: *mut 
     let sig = Arc::new(Signal { done: Mutex::new(false), cv: Condvar::new() });
     let c = SendPtr(ctx as usize);
     let s2 = sig.clone();
+    let completion2 = qq.completion.clone();
+    let comp_done = qq.port_done[1].clone();
     let done = move || {
         if let Some(cb) = cb {
             cb(c.0 as *mut c_void);
         }
+        comp_done.store(true, Ordering::Release);
+        completion2.wake();
         *s2.done.lock().unwrap_or_else(|e| e.into_inner()) = true;
         s2.cv.notify_all();
     };
     let work = qq.work.clone();
+    let work2 = qq.work.clone();
+    let work_done = qq.port_done[0].clone();
     let completion = qq.completion.clone();
     let live = qq.live.clone();
     let owns = qq.owns;
@@ -712,6 +726,8 @@ unsafe extern "system" fn q_terminate(_t: This, q: usize, wait: bool, ctx: *mut 
     let route: Idle = Box::new(move || {
         let deliver: Job = Box::new(move |_| done());
         let forward: Job = Box::new(move |_| {
+            work_done.store(true, Ordering::Release);
+            work2.wake();
             let closing = completion.clone();
             live.finish_work(
                 move || {
@@ -1544,6 +1560,85 @@ mod port_tests {
             assert!(waiters().lock().unwrap().get(&token).is_none());
             q_close(core::ptr::null(), q);
             CloseHandle(ev);
+        }
+    }
+
+    #[test]
+    fn manual_completion_infinite_dispatch_waits_for_termination_marker() {
+        unsafe extern "system" fn noop_task(_ctx: *mut c_void, _canceled: bool) {}
+        unsafe extern "system" fn on_terminated(ctx: *mut c_void) {
+            let fired = Arc::from_raw(ctx as *const AtomicBool);
+            fired.store(true, Ordering::Release);
+        }
+
+        let mut q = 0usize;
+        assert_eq!(unsafe { q_create(core::ptr::null_mut(), MANUAL, MANUAL, &mut q) }, S_OK);
+        assert_eq!(unsafe { q_submit(core::ptr::null_mut(), q, 0, core::ptr::null_mut(), Some(noop_task)) }, S_OK);
+
+        let comp_thread = std::thread::spawn(move || {
+            while unsafe { q_dispatch(core::ptr::null_mut(), q, 1, u32::MAX) } {}
+        });
+
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_raw = Arc::into_raw(fired.clone()) as *mut c_void;
+        assert_eq!(unsafe { q_terminate(core::ptr::null_mut(), q, false, fired_raw, Some(on_terminated)) }, S_OK);
+
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!fired.load(Ordering::Acquire));
+        assert!(!comp_thread.is_finished());
+
+        while unsafe { q_dispatch(core::ptr::null_mut(), q, 0, 0) } {}
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !comp_thread.is_finished() && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        assert!(comp_thread.is_finished());
+        comp_thread.join().unwrap();
+        assert!(fired.load(Ordering::Acquire));
+        unsafe { q_close(core::ptr::null_mut(), q) };
+    }
+
+    #[test]
+    fn composite_infinite_dispatch_exits_when_composite_terminates_without_stopping_base() {
+        let mut q = 0usize;
+        assert_eq!(unsafe { q_create(core::ptr::null_mut(), MANUAL, IMMEDIATE, &mut q) }, S_OK);
+        let (mut wp, mut cp) = (0usize, 0usize);
+        assert_eq!(unsafe { q_get_port(core::ptr::null_mut(), q, 0, &mut wp) }, S_OK);
+        assert_eq!(unsafe { q_get_port(core::ptr::null_mut(), q, 1, &mut cp) }, S_OK);
+        let mut comp = 0usize;
+        assert_eq!(unsafe { q_create_composite(core::ptr::null_mut(), wp, cp, &mut comp) }, S_OK);
+
+        let t_base = std::thread::spawn(move || {
+            while unsafe { q_dispatch(core::ptr::null_mut(), q, 0, u32::MAX) } {}
+        });
+        let t_comp = std::thread::spawn(move || {
+            while unsafe { q_dispatch(core::ptr::null_mut(), comp, 0, u32::MAX) } {}
+        });
+
+        std::thread::sleep(Duration::from_millis(30));
+        assert_eq!(unsafe { q_terminate(core::ptr::null_mut(), comp, true, core::ptr::null_mut(), None) }, S_OK);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !t_comp.is_finished() && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        assert!(t_comp.is_finished());
+        t_comp.join().unwrap();
+
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!t_base.is_finished());
+
+        assert_eq!(unsafe { q_terminate(core::ptr::null_mut(), q, true, core::ptr::null_mut(), None) }, S_OK);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !t_base.is_finished() && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        assert!(t_base.is_finished());
+        t_base.join().unwrap();
+
+        unsafe {
+            q_close(core::ptr::null_mut(), comp);
+            q_close(core::ptr::null_mut(), q);
         }
     }
 }
