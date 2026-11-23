@@ -152,6 +152,7 @@ pub fn parse_root_signature(data: &[u8]) -> Result<meta::RootSig, String> {
 
 pub use hlsl::infer::infer_root_signature;
 pub use hlsl::translate_with_inference;
+pub use hlsl::{translate_with_fssm_root, translate_linked_with_fssm_root};
 
 /// Program type from the DXIL program header (D3D12_SHADER_VERSION_TYPE).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

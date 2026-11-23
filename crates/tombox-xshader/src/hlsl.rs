@@ -1200,6 +1200,9 @@ pub fn translate(ex: &ShaderExtract) -> Result<Translated, String> {
 }
 
 pub fn translate_linked(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> Result<Translated, String> {
+    if ex.root_sig.is_none() && !ex.has_root_sig && std::env::var_os("TOMBOX_FSSM_ROOT_SIG").is_some_and(|v| v != "0") && matches!(crate::fssm_bind::parse(&ex.fssm), Ok(Some(_))) {
+        return translate_linked_with_fssm_root(ex, feeds_ps);
+    }
     if ex.root_sig.is_none() && std::env::var_os("TOMBOX_INFER_ROOT_SIG").is_some() {
         if let Ok(sig) = infer::infer_root_signature(ex) {
             let mut inferred = ex.clone();
@@ -1229,11 +1232,32 @@ pub fn translate_with_inference(ex: &ShaderExtract) -> Result<Translated, String
     translate(&inferred)
 }
 
-fn translate_linked_with(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>, user_data: bool) -> Result<Translated, String> {
-    let out_interp = match ex.stage {
+pub fn translate_with_fssm_root(ex: &ShaderExtract) -> Result<Translated, String> {
+    translate_linked_with_fssm_root(ex, None)
+}
+
+pub fn translate_linked_with_fssm_root(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> Result<Translated, String> {
+    if ex.root_sig.is_some() || ex.has_root_sig {
+        return translate_linked_with(ex, feeds_ps, false);
+    }
+    let b = crate::fssm_bind::parse(&ex.fssm)?.ok_or("no root signature and no FSSM binding table")?;
+    let mut with = ex.clone();
+    with.root_sig = Some(b.root_signature());
+    match b.user_base(ex.stage)? {
+        Some(base) => translate_with(&with, &out_interp_for(ex, feeds_ps), Some(base), BTreeSet::new(), false),
+        None => translate_linked_with(&with, feeds_ps, false),
+    }
+}
+
+fn out_interp_for(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> InputInterp {
+    match ex.stage {
         Stage::Vertex | Stage::Geometry | Stage::Mesh => feeds_ps.cloned().unwrap_or_default(),
         _ => InputInterp::default(),
-    };
+    }
+}
+
+fn translate_linked_with(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>, user_data: bool) -> Result<Translated, String> {
+    let out_interp = out_interp_for(ex, feeds_ps);
     match translate_with(ex, &out_interp, None, BTreeSet::new(), user_data) {
         Err(e) if disassemble(&ex.isa).iter().take(16).any(|i| i.mnemonic == "s_swappc_b64") => translate_with(ex, &out_interp, Some(8), BTreeSet::new(), user_data).map_err(|e2| if e2.contains("not a buffer descriptor") || e2.contains("not a root table") { e } else { e2 }),
         r => r,
