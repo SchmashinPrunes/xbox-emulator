@@ -952,7 +952,7 @@
 <rect x="550.00" y="370.00" width="450.00" height="170.00" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="555.00" y="386.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">Device</text>
 </g>
-<text x="4.00" y="571.00" font-family="sans-serif" font-size="16" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">RDNA2 shader instructions translated: 97.62% (778/797)</text>
+<text x="4.00" y="571.00" font-family="sans-serif" font-size="16" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">RDNA2 shader instructions translated: 99.00% (789/797)</text>
 <g><title>VOPC: 190/190 (100%)</title>
 <rect x="1.00" y="581.00" width="16.89" height="18.43" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="17.89" y="581.00" width="16.89" height="18.43" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
@@ -1568,7 +1568,7 @@
 <rect x="680.05" y="580.00" width="105.40" height="139.29" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="685.05" y="596.00" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">SOP1</text>
 </g>
-<g><title>MIMG: 28/39 (71%)</title>
+<g><title>MIMG: 39/39 (100%)</title>
 <rect x="681.05" y="720.29" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="698.28" y="720.29" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="715.52" y="720.29" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
@@ -1597,17 +1597,17 @@
 <rect x="698.28" y="788.12" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="715.52" y="788.12" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="732.75" y="788.12" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="749.98" y="788.12" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="767.21" y="788.12" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="681.05" y="805.08" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="698.28" y="805.08" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="715.52" y="805.08" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="732.75" y="805.08" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="749.98" y="805.08" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="767.21" y="805.08" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="681.05" y="822.04" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="698.28" y="822.04" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
-<rect x="715.52" y="822.04" width="17.23" height="16.96" fill="#6e7681" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="749.98" y="788.12" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="767.21" y="788.12" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="681.05" y="805.08" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="698.28" y="805.08" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="715.52" y="805.08" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="732.75" y="805.08" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="749.98" y="805.08" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="767.21" y="805.08" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="681.05" y="822.04" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="698.28" y="822.04" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
+<rect x="715.52" y="822.04" width="17.23" height="16.96" fill="#2ea043" stroke="#0d1117" stroke-width="0.5"/>
 <rect x="680.05" y="719.29" width="105.40" height="120.71" fill="none" stroke="#0d1117" stroke-width="2"/>
 <text x="685.05" y="735.29" font-family="sans-serif" font-size="12" fill="#ffffff" stroke="#0d1117" stroke-width="3" paint-order="stroke">MIMG</text>
 </g>
