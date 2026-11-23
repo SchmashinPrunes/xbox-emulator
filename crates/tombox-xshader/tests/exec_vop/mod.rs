@@ -809,6 +809,7 @@ fn div_f32_sequence() {
 
 mod basic;
 mod fract;
+mod interp;
 mod lanes;
 mod leonida;
 mod rdna2_silicon;
