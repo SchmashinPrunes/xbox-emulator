@@ -38,6 +38,7 @@ mod mimg_d16;
 mod atomic;
 mod user_data;
 mod smem_bounds;
+mod tess;
 pub use smem_bounds::{CBFIT_CBUFFER, CBFIT_RAW};
 pub mod infer;
 use mimg_d16::{mimg_data_regs, Lane};
@@ -1257,7 +1258,7 @@ pub fn translate_linked_with_fssm_root(ex: &ShaderExtract, feeds_ps: Option<&Inp
 
 fn out_interp_for(ex: &ShaderExtract, feeds_ps: Option<&InputInterp>) -> InputInterp {
     match ex.stage {
-        Stage::Vertex | Stage::Geometry | Stage::Mesh => feeds_ps.cloned().unwrap_or_default(),
+        Stage::Vertex | Stage::Geometry | Stage::Mesh | Stage::Domain => feeds_ps.cloned().unwrap_or_default(),
         _ => InputInterp::default(),
     }
 }
@@ -1278,6 +1279,7 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
         Stage::Geometry => ("gs_5_0", false),
         Stage::Mesh => ("ms_6_5", false),
         Stage::Amplification => ("as_6_5", false),
+        Stage::Domain => ("ds_5_0", false),
         other => return Err(format!("stage {other:?} not supported yet")),
     };
     let mut insns = disassemble(&ex.isa);
@@ -1396,6 +1398,9 @@ fn translate_with(ex: &ShaderExtract, out_interp: &InputInterp, user_base_overri
                 }
             }
         }
+    }
+    if em.is_ds() {
+        em.ds_check()?;
     }
     em.resolve_resources()?;
     let clash: BTreeSet<u32> = em.bl_uav.intersection(&em.bl_srv).copied().filter(|s| !em.uav_force.contains(s)).collect();
@@ -7833,6 +7838,8 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID) {{");
                 "}};\n[maxvertexcount({})]\nvoid main({prim} SIn i[{nv}], inout {stream}<SOut> stream) {{",
                 self.gs_max_vertices()
             );
+        } else if self.is_ds() {
+            let _ = write!(h, "}};\n{}", self.ds_entry()?);
         } else {
             let _ = writeln!(h, "}};\nSOut main(SIn i) {{\n    SOut o = (SOut)0;");
         }
@@ -7879,7 +7886,11 @@ void main(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID) {{");
                 }
             };
         }
-        if !is_ps && !self.is_gs {
+        if self.is_ds() {
+            let ds_init = self.ds_init();
+            init.push_str(&ds_init);
+        }
+        if !is_ps && !self.is_gs && !self.is_ds() {
             let is_durango = self.durango.is_some() || crate::gcn::is_durango(&self.ex.fssm);
             let merged = ex.stage == Stage::Vertex && self.merged_es();
             if merged {
