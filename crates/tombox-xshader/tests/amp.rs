@@ -454,6 +454,10 @@ fn synth_as_with(head: &[u32], tag_and_count: &[u32], args: &[u32], tail: &[u32]
 }
 
 fn synth_ms() -> Vec<u32> {
+    synth_ms_with(&[])
+}
+
+fn synth_ms_with(tail: &[u32]) -> Vec<u32> {
     let mut w = vec![sop1(4, EXEC, ic(-1))];
     w.extend(vop3(0x365, 0, [ic(-1), ic(0), 0]));
     w.extend(vop3(0x366, 0, [ic(-1), v(0), 0]));
@@ -470,6 +474,7 @@ fn synth_ms() -> Vec<u32> {
     w.extend([vopc(0xc2, LIT, 0), 64, vop2(1, 11, v(11), 12), vopc(0xc2, LIT, 0), 65, vop2(1, 11, v(11), 13)]);
     w.extend([vop2(3, 1, v(10), 11), vop1(1, 2, LIT), 4.0f32.to_bits(), vopc(0xc2, LIT, 0), 66, vop2(1, 3, F_NEG1, 2)]);
     w.extend([vop1(1, 4, ic(0)), vop1(1, 6, F_ONE), vop1(1, 7, v(25)), vop1(1, 8, 14), vop1(1, 9, LIT), TRI]);
+    w.extend(tail);
     w.extend(exp(12, 0xf, false, [1, 3, 4, 6]));
     w.extend(exp(20, 0x1, false, [9, 0, 0, 0]));
     w.extend(exp(32, 0xf, true, [7, 8, 26, 27]));
@@ -482,11 +487,15 @@ fn synth_pair(head: &[u32], tag_and_count: &[u32], args: &[u32], root: Option<Ro
 }
 
 fn synth_pair_with(as_words: &[u32], payload_bytes: u32, root: Option<RootSig>) -> (Translated, Translated) {
+    synth_pair_ms(as_words, &synth_ms(), payload_bytes, root)
+}
+
+fn synth_pair_ms(as_words: &[u32], ms_words: &[u32], payload_bytes: u32, root: Option<RootSig>) -> (Translated, Translated) {
     let a = MeshInfo { stage: 14, groupshared_bytes: 0, payload_bytes, max_vertices: 0, max_primitives: 0, prim_vectors: 0, topology: 0, num_threads: [32, 1, 1] };
     let m = MeshInfo { stage: 13, groupshared_bytes: 0, payload_bytes, max_vertices: 128, max_primitives: 128, prim_vectors: 0, topology: 2, num_threads: [128, 1, 1] };
     let outs = vec![sig("SV_Position", 1, 3, 0, 0xf), sig("TEXCOORD", 0, 1, 1, 0xf)];
     let ta = translate(&synth(Stage::Amplification, as_words, a, vec![], root)).unwrap_or_else(|e| panic!("synthetic AS: {e}"));
-    let tm = translate(&synth(Stage::Mesh, &synth_ms(), m, outs, None)).unwrap_or_else(|e| panic!("synthetic MS: {e}"));
+    let tm = translate(&synth(Stage::Mesh, ms_words, m, outs, None)).unwrap_or_else(|e| panic!("synthetic MS: {e}"));
     (ta, tm)
 }
 
@@ -648,4 +657,29 @@ fn gpu_synthetic_amplification_sub_dword_payload_stores_merge() {
     want[5] = px_for(1, 1);
     assert_eq!(fault, [0, 0, 0], "global-memory misses");
     assert_eq!(px, want);
+}
+
+#[test]
+fn gpu_synthetic_mesh_sub_dword_payload_loads_extend_correctly() {
+    let st = global(28, 10, 12, 6, 0);
+    let as_tail = [vop1(1, 12, LIT), 0x8081_82f3, st[0] | 12, st[1]];
+    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &as_tail, 16);
+    for (ops, want) in [
+        ([(8, 13), (9, 13)], [0x82, 0xffff_ff82]),
+        ([(10, 14), (11, 14)], [0x8081, 0xffff_8081]),
+        ([(10, 13), (11, 13)], [0x8182, 0xffff_8182]),
+        ([(8, 15), (9, 12)], [0x80, 0xffff_fff3]),
+    ] {
+        let mut tail = vec![];
+        for (k, (op, off)) in ops.into_iter().enumerate() {
+            let ld = global(op, 20, 0, 12, 26 + k as u32);
+            tail.extend([ld[0] | off, ld[1]]);
+        }
+        let (ta, tm) = synth_pair_ms(&words, &synth_ms_with(&tail), 16, None);
+        let (px, fault) = unsafe { render_pair(&ta, &tm, 1, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+        let mut expect = [CLEAR; W];
+        expect[0] = [0x100, 0, want[0], want[1]];
+        assert_eq!(fault, [0, 0, 0], "global-memory misses for {ops:?}");
+        assert_eq!(px, expect, "loads {ops:?}");
+    }
 }
