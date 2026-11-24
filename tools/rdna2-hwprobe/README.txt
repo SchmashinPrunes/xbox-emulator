@@ -326,3 +326,30 @@ NaN rules, v_min_f32 / v_max_f32: in IEEE mode 0 a NaN operand is ignored when t
 number, and two NaNs give src0 unchanged. In IEEE mode 1 a signalling NaN wins and is quieted (src0
 first); otherwise a quiet NaN is ignored when the other operand is a number, and two quiet NaNs give
 src0.
+
+Colour export and blend probe (cb_probe.cpp, cb_probe.vert, cb_probe.frag, cb_probe.py)
+--------------------------------------------------------------------------------------
+
+A Vulkan program, not raw ISA: it draws one row of pixels whose fragment shader writes four f32
+bit patterns from a storage buffer, into RGBA16F, B10G11R11_UFLOAT, RGBA32F and R16F targets, with
+blending off, ONE/ZERO ADD, ONE/ONE ADD, MIN and MAX. A first unblended pass writes the destination
+values. It runs on any Vulkan 1.3 driver; the first device whose name contains the given text is used.
+Needs libvulkan-dev and glslang-tools.
+
+    glslangValidator -V cb_probe.vert -o cb_probe.vert.spv
+    glslangValidator -V cb_probe.frag -o cb_probe.frag.spv
+    g++ -O1 -o cb_probe cb_probe.cpp -lvulkan
+    python3 cb_probe.py gen cb.in                        (prints the pixel count, 340)
+    ./cb_probe RADV cb.in 340 cb.out                     (twice; keep when identical)
+    python3 cb_probe.py show cb.out                      (every stored value)
+    python3 cb_probe.py check cb.out                     (the gfx1036 rules; prints the differences)
+
+RADV_DEBUG=shaders shows the export: on RADV, RGBA16F and R11G11B10 are written with
+v_cvt_pkrtz_f16_f32 and a compressed export, RGBA32F with a 32-bit export. On gfx1036 (Mesa 25.2.8
+RADV), check prints 0 differences:
+
+    unblended / ONE,ZERO  +Inf stays Inf, every NaN becomes the format's NaN (fp16 0xfe00), finite
+                          overflow becomes the largest finite value, negatives become 0 in R11G11B10
+    ONE,ONE ADD           Inf + finite = Inf, Inf + -Inf = NaN, NaN in either operand gives NaN; finite
+                          sums round toward zero and saturate (40000 + 40000 = 0x7bff)
+    MIN / MAX             a NaN operand is ignored and the other one is stored; -0 comes back as +0
