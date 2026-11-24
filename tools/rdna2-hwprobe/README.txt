@@ -353,3 +353,24 @@ RADV), check prints 0 differences:
     ONE,ONE ADD           Inf + finite = Inf, Inf + -Inf = NaN, NaN in either operand gives NaN; finite
                           sums round toward zero and saturate (40000 + 40000 = 0x7bff)
     MIN / MAX             a NaN operand is ignored and the other one is stored; -0 comes back as +0
+Mip selection and resinfo probe (mip_probe.py, mip_runner.cpp)
+--------------------------------------------------------------
+
+mip_runner keeps one 1 MiB image buffer for the whole run. g4_fill writes a 16x16 R32_FLOAT image
+with 5 levels through image_store_mip (the texel at level m, x, y holds m * 1000 + y * 16 + x), so the
+layout of the levels does not matter. The other kernels build the T# and S# from each case and run
+image_gather4_l, image_gather4_lz, image_sample_l (point xy filter, u = v = 0.53) or
+image_get_resinfo (2D array, 2D, 3D).
+
+    python3 mip_probe.py gen k.s in
+    clang-18 -x assembler -target amdgcn-amd-amdhsa -mcpu=gfx1036 -c k.s -o k.o && ld.lld-18 -shared k.o -o k.co
+    g++ -O2 -D__HIP_PLATFORM_AMD__ -o mip_runner mip_runner.cpp -lamdhip64
+    ./mip_runner k.co g4_fill in/fill.in - g4_g4l in/samp.in out/g4l.out g4_g4lz in/samp.in out/g4lz.out \
+        g4_sl in/samp.in out/sl.out g4_rinfo2da in/rinfo2da.in out/r2da.out g4_rinfo2d in/rinfo2d.in out/r2d.out \
+        g4_rinfo3d in/rinfo3d.in out/r3d.out
+    python3 mip_probe.py check in out
+
+On gfx1036 check prints 0 differences for every group. The rules it checks are in docs/BLOCKERS.md
+("gather4_l footprint ignores sampler bias/clamp" and "image_get_resinfo array layers are not
+minified"): LOD_BIAS applies to _l, the S# clamp follows the bias, an exact .5 LOD rounds up, and a 2D
+array's layer word is not minified.
