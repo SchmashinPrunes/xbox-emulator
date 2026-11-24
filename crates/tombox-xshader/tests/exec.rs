@@ -555,8 +555,7 @@ pub fn run_res_psv(words: &[u32], root: tombox_xshader::meta::RootSig, buf: Opti
         let hlsl = &t.hlsl;
         let mut stride = 0u32;
         let mut fmt = 42u32;
-        if hlsl.contains("RWStructuredBuffer<TbElem_ubuf0>") {
-            let n: u32 = hlsl.split("struct TbElem_ubuf0 { uint w[").nth(1).and_then(|s| s.split(']').next()).and_then(|s| s.parse().ok()).unwrap_or(1);
+        if let Some(n) = hlsl.split("struct TbElem_ubuf").nth(1).and_then(|s| s.split("{ uint w[").nth(1)).and_then(|s| s.split(']').next()).and_then(|s| s.parse::<u32>().ok()) {
             stride = n * 4;
             fmt = 0;
         } else if hlsl.contains("RWStructuredBuffer<uint> ubuf0") {

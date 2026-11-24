@@ -174,7 +174,11 @@ float tb_qn(float x) { return tb_nan(x) ? asfloat(0x7fc00000u) : x; }
 #endif
 float tb_u2f(uint a) { precise float r = (float)(a & 0xffff0000u) + (float)(a & 0xffffu); return r; }
 float tb_log(float x) { uint b = asuint(x); return tb_qn((b == 0x7f800000u) ? x : TB_SEL(b - 0x00800000u < 0x7f000000u && (b & 0x7fffffu) == 0u, (float)((int)(b >> 23) - 127), log2(x))); }
-float tb_fsub(float a, float b) { precise float r = a - b; return tb_qn(r); }
+float tb_fsub(float a, float b) { precise float r = a - b; uint ua = asuint(a), ub = asuint(b), m = 0x7fffffffu; return ((ua & m) > 0x7f800000u || (ub & m) > 0x7f800000u || ((ua & m) == 0x7f800000u && ua == ub)) ? asfloat(0x7fc00000u) : r; }
+float tb_hz(float r, uint s) { uint b = asuint(r); return asfloat((b & 0x7fffffffu) == 0u ? (b | s) : b); }
+float tb_hadd(float a, float b) { uint ua = asuint(a), ub = asuint(b); return tb_hz(a + b, ((ua | ub) & 0x7fffffffu) == 0u ? (ua & ub & 0x80000000u) : 0u); }
+float tb_hsub(float a, float b) { uint ua = asuint(a), ub = asuint(b); return tb_hz(a - b, ((ua | ub) & 0x7fffffffu) == 0u ? (ua & ~ub & 0x80000000u) : 0u); }
+float tb_hmul(float a, float b) { return tb_hz(a * b, (asuint(a) ^ asuint(b)) & 0x80000000u); }
 float tb_fract(float x) { if ((asuint(x) & 0x7fffffffu) >= 0x7f800000u) return asfloat(0x7fc00000u); precise float f = x - floor(x); return min(f, asfloat(0x3f7fffffu)); }
 #ifdef TB_FAST_F2H
 uint tb_f2h(float x) { uint b = asuint(x); return (b & 0x7fffffffu) > 0x7f800000u ? (((b >> 16) & 0x8000u) | 0x7e00u | ((b >> 13) & 0x3ffu)) : (uint)asuint16((float16_t)x); }
@@ -4707,10 +4711,10 @@ impl<'a> Emitter<'a> {
         if matches!(m.as_str(), "v_add_f16" | "v_sub_f16" | "v_subrev_f16" | "v_mul_f16" | "v_max_f16" | "v_min_f16") {
             let (a, b) = (h16(&s[0])?, h16(&s[1])?);
             let e = match m.as_str() {
-                "v_add_f16" => format!("{a} + {b}"),
-                "v_sub_f16" => format!("{a} - {b}"),
-                "v_subrev_f16" => format!("{b} - {a}"),
-                "v_mul_f16" => format!("{a} * {b}"),
+                "v_add_f16" => format!("tb_hadd({a}, {b})"),
+                "v_sub_f16" => format!("tb_hsub({a}, {b})"),
+                "v_subrev_f16" => format!("tb_hsub({b}, {a})"),
+                "v_mul_f16" => format!("tb_hmul({a}, {b})"),
                 "v_max_f16" => format!("max({a}, {b})"),
                 _ => format!("min({a}, {b})"),
             };
