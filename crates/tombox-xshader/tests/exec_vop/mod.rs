@@ -561,6 +561,7 @@ fn div_scale_and_fixup_f64() {
     c.run_both("div_scale_fixup");
 }
 
+mod amd_fold;
 mod basic;
 mod fract;
 mod lanes;

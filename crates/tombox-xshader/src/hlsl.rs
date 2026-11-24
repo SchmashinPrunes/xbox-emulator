@@ -175,7 +175,9 @@ float tb_qn(float x) { return tb_nan(x) ? asfloat(0x7fc00000u) : x; }
 float tb_u2f(uint a) { precise float r = (float)(a & 0xffff0000u) + (float)(a & 0xffffu); return r; }
 float tb_log(float x) { uint b = asuint(x); return tb_qn((b == 0x7f800000u) ? x : TB_SEL(b - 0x00800000u < 0x7f000000u && (b & 0x7fffffu) == 0u, (float)((int)(b >> 23) - 127), log2(x))); }
 float tb_fsub(float a, float b) { precise float r = a - b; uint ua = asuint(a), ub = asuint(b), m = 0x7fffffffu; return ((ua & m) > 0x7f800000u || (ub & m) > 0x7f800000u || ((ua & m) == 0x7f800000u && ua == ub)) ? asfloat(0x7fc00000u) : r; }
-float tb_hz(float r, uint s) { uint b = asuint(r); return asfloat((b & 0x7fffffffu) == 0u ? (b | s) : b); }
+float tb_hz(float r, uint s) { uint b = asuint(r); return asfloat((b & 0x7fffffffu) == 0u ? s : b); }
+float tb_pz(float r) { uint b = asuint(r); return asfloat((b & 0x7fffffffu) == 0u ? 0u : b); }
+float tb_pzf(float r, float a, float b) { uint m = 0x7fffffffu; return ((asuint(a) & m) == 0u || (asuint(b) & m) == 0u) ? tb_pz(r) : r; }
 float tb_hadd(float a, float b) { uint ua = asuint(a), ub = asuint(b); return tb_hz(a + b, ((ua | ub) & 0x7fffffffu) == 0u ? (ua & ub & 0x80000000u) : 0u); }
 float tb_hsub(float a, float b) { uint ua = asuint(a), ub = asuint(b); return tb_hz(a - b, ((ua | ub) & 0x7fffffffu) == 0u ? (ua & ~ub & 0x80000000u) : 0u); }
 float tb_hmul(float a, float b) { return tb_hz(a * b, (asuint(a) ^ asuint(b)) & 0x80000000u); }
@@ -728,7 +730,7 @@ uint tb_hi64(double x) { uint l, h; asuint(x, l, h); return h; }
 uint tb_lo64(double x) { uint l, h; asuint(x, l, h); return l; }
 bool tb_isinf64(double x) { return abs(x) == asdouble(0u, 0x7ff00000u); }
 double tb_ldexp64(double x, int e) { e = clamp(e, -2200, 2200); for (int i = 0; i < 3; i++) { int k = clamp(e, -1022, 1023); precise double y = x * asdouble(0u, (uint)(k + 1023) << 20); x = y; e -= k; } return x; }
-double tb_trunc64(double x) { if ((tb_hi64(x) & 0x7ff00000u) == 0x7ff00000u || abs(x) >= 4503599627370496.0L) return x; double t = (double)(int64_t)x; return t == 0.0L ? asdouble(0u, tb_hi64(x) & 0x80000000u) : t; }
+double tb_trunc64(double x) { uint l, h; asuint(x, l, h); int e = (int)((h >> 20) & 0x7ffu) - 1023; if (e >= 52) return x; if (e < 0) return asdouble(0u, h & 0x80000000u); if (e < 20) return asdouble(0u, h & ~(0xfffffu >> (uint)e)); return asdouble(l & ~(0xffffffffu >> (uint)(e - 20)), h); }
 double tb_floor64(double x) { double t = tb_trunc64(x); return (t > x) ? t - 1.0L : t; }
 double tb_ceil64(double x) { double t = tb_trunc64(x); return (t < x) ? t + 1.0L : t; }
 double tb_rndne64(double x) { if ((tb_hi64(x) & 0x7ff00000u) == 0x7ff00000u || abs(x) >= 4503599627370496.0L) return x; double t = tb_floor64(x + 0.5L); if (t - x == 0.5L && ((int64_t)t & 1) != 0) t -= 1.0L; return t == 0.0L ? asdouble(0u, tb_hi64(x) & 0x80000000u) : t; }
@@ -4783,7 +4785,16 @@ impl<'a> Emitter<'a> {
                 _ => (h16(&s[0])?, k, h16(&s[1])?, fma16_operands_exact(&s[..1])),
             };
             let f = if exact { "tb_fma16" } else { "tb_fma_rto" };
-            return self.wv(&d, &hres(format!("{f}({x}, {y}, {z})")));
+            let k0 = ins.raw.last().copied().unwrap_or(1) & 0xffff == 0;
+            let z0 = |i: usize| matches!(s.get(i), Some(Opnd::ConstInt(0) | Opnd::Literal(0))) && !(ins.enc == Enc::Vop3 && (ins.aux.mask >> (3 + i)) & 1 != 0);
+            let pz = match m.as_str() {
+                "v_fmaak_f16" => k0,
+                "v_fma_f16" => z0(2),
+                _ => false,
+            };
+            let e = format!("{f}({x}, {y}, {z})");
+            let e = if pz { format!("tb_pz({e})") } else { e };
+            return self.wv(&d, &hres(e));
         }
         if matches!(m.as_str(), "v_pk_fma_f16" | "v_pk_add_f16" | "v_pk_mul_f16" | "v_pk_min_f16" | "v_pk_max_f16") {
             // Packed half-float ops (VOP3P): two f16 lanes per register. For the low result,
@@ -4850,7 +4861,8 @@ impl<'a> Emitter<'a> {
             return self.wv(&d, &hres(e));
         }
         if m == "v_ldexp_f16" {
-            let e = format!("ldexp({}, (float)clamp(asint(({}) << 16) >> 16, -64, 64))", h16(&s[0])?, r(&s[1])?);
+            let x = h16(&s[0])?;
+            let e = format!("tb_hz(ldexp({x}, (float)clamp(asint(({}) << 16) >> 16, -64, 64)), asuint({x}) & 0x80000000u)", r(&s[1])?);
             return self.wv(&d, &hres(e));
         }
         if m == "v_pk_fmac_f16" {
@@ -5391,6 +5403,18 @@ impl<'a> Emitter<'a> {
             _ => None,
         } };
         if let Some(e) = fexpr {
+            let pz_src = |i: usize| matches!(s.get(i), Some(Opnd::ConstInt(0) | Opnd::Literal(0))) && !(vop3 && (ins.aux.mask >> (3 + i)) & 1 != 0);
+            let pz = match m.as_str() {
+                "v_add_f32" => pz_src(0) || pz_src(1),
+                "v_fma_f32" | "v_mad_f32" => pz_src(2),
+                "v_fmaak_f32" | "v_madak_f32" => ins.raw.last() == Some(&0),
+                _ => false,
+            };
+            let e = match (pz, m.as_str()) {
+                (true, "v_fma_f32" | "v_fmaak_f32") => format!("tb_pzf({e}, {}, {})", fa()?, fb()?),
+                (true, _) => format!("tb_pz({e})"),
+                _ => e,
+            };
             let e = if sp { mode::dout(e) } else { e };
             let e = self.fres(ins, e);
             let e = if m == "v_mad_f32" && vop3 && ins.aux.imm2 != 0 { format!("asuint(tb_ftz(asfloat({e})))") } else { e };
