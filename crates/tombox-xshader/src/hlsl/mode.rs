@@ -10,6 +10,7 @@ uint tb_hzb(uint b) { return ((b & 0x7c00u) == 0u) ? (b & 0x8000u) : b; }
 "#;
 
 pub(super) const MODE_HELPERS: &str = r#"float tb_om0(float x) { return asfloat((asuint(x) == 0x80000000u) ? 0u : asuint(x)); }
+float tb_omh(float x, float k) { float r = tb_om0(x * k); return (abs(r) < 6.103515625e-05) ? asfloat(asuint(r) & 0x80000000u) : r; }
 float tb_dz(float x) { return ((asuint(x) & 0x7f800000u) == 0u) ? asfloat(asuint(x) & 0x80000000u) : x; }
 float tb_din(float x, uint m) { return ((m & 0x10u) != 0u) ? x : tb_dz(x); }
 float tb_dout(float x, uint m) { return ((m & 0x20u) != 0u) ? x : tb_dz(x); }
@@ -465,7 +466,7 @@ impl Emitter<'_> {
             _ => None,
         };
         if let Some(k) = k {
-            e = format!("(((tb_hw1 & 0x2c0u) == 0u) ? tb_om0(({e}) * {k}) : ({e}))");
+            e = format!("(((tb_hw1 & 0x280u) == 0u) ? tb_omh(({e}), {k}) : ({e}))");
         }
         if ins.aux.imm != 0 {
             e = format!("saturate({e})");

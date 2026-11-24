@@ -2806,6 +2806,20 @@ fn f16_omod_follows_mode() {
         let mut p = flush16.to_vec();
         p.extend_from_slice(&w);
         vc(&mut c, "s_setreg_imm32_b32", &ins, &p, &[12], &[flushed]);
+        let mut p = vec![sopk(0x15, 0, hw(1, 6, 2)), 1];
+        p.extend_from_slice(&w);
+        vc(&mut c, "s_setreg_imm32_b32", &ins, &p, &[12], &[flushed]);
+        let mut p = vec![sopk(0x15, 0, hw(1, 6, 2)), 2];
+        p.extend_from_slice(&w);
+        vc(&mut c, "s_setreg_imm32_b32", &ins, &p, &[12], &[keep]);
+    }
+    let tiny = [(1, 0x0400), (2, 0x3c00), (3, 0x8400), (4, 0x07ff)];
+    for (a, omod, keep, flushed) in [(1u32, 3u32, 0x0400u32, 0x0000u32), (3, 3, 0x8400, 0x8000), (4, 3, 0x07ff, 0x0000), (1, 1, 0x0400, 0x0800)] {
+        let w = om(0x135, a, 2, omod, false);
+        vc(&mut c, "v_mul_f16", &tiny, &w, &[12], &[keep]);
+        let mut p = flush16.to_vec();
+        p.extend_from_slice(&w);
+        vc(&mut c, "s_setreg_imm32_b32", &tiny, &p, &[12], &[flushed]);
     }
     c.run_both("f16_omod_follows_mode");
 }

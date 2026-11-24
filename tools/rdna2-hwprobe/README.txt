@@ -375,3 +375,20 @@ On gfx1036 check prints 0 differences for every group. The rules it checks are i
 ("gather4_l footprint ignores sampler bias/clamp" and "image_get_resinfo array layers are not
 minified"): LOD_BIAS applies to _l, the S# clamp follows the bias, an exact .5 LOD rounds up, and a 2D
 array's layer word is not minified.
+
+f16 output modifier probe (omod_probe.py)
+-----------------------------------------
+
+One kernel per f16-result VALU op and MODE (IEEE 0/1 x f16/f64 denorm mode 0..3, set through the
+kernel descriptor): each runs the op as _e64 without an omod and with mul:2, mul:4 and div:2 on the
+same inputs (8192 cases from om.in).
+
+    python3 omod_probe.py gen k.s om.in > names.txt
+    clang-18 -x assembler -target amdgcn-amd-amdhsa -mcpu=gfx1036 -c k.s -o k.o && ld.lld-18 -shared k.o -o k.co
+    g++ -O2 -D__HIP_PLATFORM_AMD__ -o verify_runner verify_runner.cpp -lamdhip64
+    for n in $(cat names.txt); do ./verify_runner k.co $n om.in out/$n.out; done
+    python3 omod_probe.py check out
+
+On gfx1036 check prints 0 differences: the omod acts only with IEEE 0 and f16 output denormals
+flushed (denorm mode 0 or 1); a +-0 or denormal pre-omod result then becomes +0, and a scaled value
+below 2^-14 becomes a zero of its sign.
