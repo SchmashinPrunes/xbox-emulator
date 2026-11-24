@@ -260,6 +260,75 @@ fn image_mimg_compare_gather() {
     run_mem_cases("mimg_compare_gather", &cs);
 }
 
+#[test]
+fn image_mimg_compare_clamp_bias_grad() {
+    let mut cs = Vec::new();
+    let tz = |m: u32, x: u32, y: u32| f32::from_bits(td(m, 0, x, y)[0]);
+    let one = |b: bool| fb(if b { 1.0 } else { 0.0 });
+    let zmid = |u: f32, v: f32| {
+        let (a, b) = (pt(0, u, v, (0, 0)), pt(1, u, v, (0, 0)));
+        0.5 * (tz(0, a.0, a.1) + tz(1, b.0, b.1))
+    };
+    let env = |pos: bool| Env { tex: Some(&IMG_E), samp: Some(sampler(0x80, 3, 2)), pos, ..Default::default() };
+    let (u, v) = (0.3f32, 0.6f32);
+    for &cl in &[0.0f32, 0.4, 0.7, 1.2, 3.0] {
+        let z = zmid(u, v);
+        let op = mimg(0x29, 1, 1, 1, 5, 0, 12);
+        let mut pre = Prog::new();
+        pre.vv(1, fb(z)).vv(2, fb(u)).vv(3, fb(v)).vv(4, fb(cl));
+        let m = nearest(cl, 2);
+        let (x, y) = pt(m, u, v, (0, 0));
+        cs.push(case("image_sample_c_cl", op, build(&pre, &op, 5, 1, false), env(false), vec![one(z < tz(m, x, y))]));
+    }
+    for &(k, b, lod) in &PS_K[..2] {
+        for &cl in &[0.0f32, 1.2] {
+            let op = mimg(0x29, 1, 1, 5, 9, 0, 12);
+            let mut pre = Prog::new();
+            let (u0, v0) = pos_uv(&mut pre, 6, 7, k, b);
+            let z = zmid(u0, v0);
+            pre.vv(5, fb(z)).vv(8, fb(cl));
+            let m = nearest((lod as f32).max(cl), 2);
+            let (x, y) = pt(m, u0, v0, (0, 0));
+            cs.push(case("image_sample_c_cl", op, build(&pre, &op, 9, 1, false), env(true), vec![one(z < tz(m, x, y))]));
+        }
+    }
+    for &(k, b, lod) in &PS_K[..2] {
+        for &(bias, cl) in &[(1.0f32, 0.0f32), (-1.0, 0.0), (0.2, 0.0), (-2.0, 1.2), (0.0, 0.0)] {
+            for (mn, opc) in [("image_sample_c_b", 0x2du32), ("image_sample_c_b_cl", 0x2e)] {
+                if opc == 0x2d && cl != 0.0 {
+                    continue;
+                }
+                let op = mimg(opc, 1, 1, 5, 10, 0, 12);
+                let mut pre = Prog::new();
+                pre.vv(5, fb(bias));
+                let (u0, v0) = pos_uv(&mut pre, 7, 8, k, b);
+                let z = zmid(u0, v0);
+                pre.vv(6, fb(z)).vv(9, fb(cl));
+                let m = nearest((lod as f32 + bias).max(if opc == 0x2e { cl } else { 0.0 }), 2);
+                let (x, y) = pt(m, u0, v0, (0, 0));
+                cs.push(case(mn, op, build(&pre, &op, 10, 1, false), env(true), vec![one(z < tz(m, x, y))]));
+            }
+        }
+    }
+    for &(g, lod) in &[([0.25f32, 0.0, 0.0, 0.25], 1.0f32), ([0.125, 0.0, 0.0, 0.125], 0.0), ([0.0, 0.0625, 0.0625, 0.0], 0.0), ([0.0, 0.5, 0.0625, 0.0], 2.0), ([0.0625, 0.0, 0.0, 0.03125], 0.0)] {
+        for &cl in &[0.0f32, 1.3] {
+            for (mn, opc) in [("image_sample_c_d", 0x2au32), ("image_sample_c_d_cl", 0x2b)] {
+                if opc == 0x2a && cl != 0.0 {
+                    continue;
+                }
+                let op = mimg(opc, 1, 1, 10, 20, 0, 12);
+                let z = zmid(u, v);
+                let mut pre = Prog::new();
+                pre.vv(10, fb(z)).vv(11, fb(g[0])).vv(12, fb(g[1])).vv(13, fb(g[2])).vv(14, fb(g[3])).vv(15, fb(u)).vv(16, fb(v)).vv(17, fb(cl));
+                let m = nearest(lod.max(if opc == 0x2b { cl } else { 0.0 }), 2);
+                let (x, y) = pt(m, u, v, (0, 0));
+                cs.push(case(mn, op, build(&pre, &op, 20, 1, false), env(false), vec![one(z < tz(m, x, y))]));
+            }
+        }
+    }
+    run_mem_cases("mimg_compare_lod", &cs);
+}
+
 fn foot_at(m: u32, u: f32, v: f32, off: (i32, i32), wrap: bool) -> [(u32, u32); 4] {
     let s = (8u32 >> m) as i32;
     let i0 = (u * s as f32 - 0.5).floor() as i32 + off.0;

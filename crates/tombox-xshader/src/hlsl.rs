@@ -7347,14 +7347,27 @@ impl<'a> Emitter<'a> {
         let call = if let Some(z) = &zref {
             // Depth-compare sampling returns a single value.
             match modi {
-                0 if in_loop => format!("{tex}.SampleCmpLevelZero({smp}, {cvec}, {z}{})", tail(&offset, &None)?),
-                0 => format!("{tex}.SampleCmp({smp}, {cvec}, {z}{})", tail(&offset, &None)?),
+                0 | 1 if in_loop => format!("{tex}.SampleCmpLevelZero({smp}, {cvec}, {z}{})", tail(&offset, &None)?),
+                0 | 1 => format!("{tex}.SampleCmp({smp}, {cvec}, {z}{})", tail(&offset, &clamp)?),
                 7 => format!("{tex}.SampleCmpLevelZero({smp}, {cvec}, {z}{})", tail(&offset, &None)?),
                 4 => {
                     self.sm6_minor = self.sm6_minor.max(7);
                     format!("{tex}.SampleCmpLevel({smp}, {cvec}, {z}, {}{})", lod.clone().ok_or("missing lod")?, tail(&offset, &None)?)
                 }
-                _ => return Err("depth-compare sample with explicit LOD/bias/gradient unsupported in SM5".into()),
+                5 | 6 if in_loop => {
+                    self.sm6_minor = self.sm6_minor.max(7);
+                    format!("{tex}.SampleCmpLevel({smp}, {cvec}, {z}, {}{})", bias.clone().ok_or("missing bias")?, tail(&offset, &None)?)
+                }
+                5 | 6 => {
+                    self.sm6_minor = self.sm6_minor.max(8);
+                    format!("{tex}.SampleCmpBias({smp}, {cvec}, {z}, {}{})", bias.clone().ok_or("missing bias")?, tail(&offset, &clamp)?)
+                }
+                2 | 3 => {
+                    self.sm6_minor = self.sm6_minor.max(8);
+                    let (dx, dy) = grads.clone().ok_or("missing gradients")?;
+                    format!("{tex}.SampleCmpGrad({smp}, {cvec}, {z}, {dx}, {dy}{})", tail(&offset, &clamp)?)
+                }
+                _ => return Err("depth-compare sample with an unknown LOD modifier".into()),
             }
         } else {
             match modi {
