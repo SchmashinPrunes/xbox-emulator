@@ -2176,9 +2176,28 @@ fn vector_f64() {
         post.raw(&[vop1(1, 0, v(10)), vop1(1, 1, v(11))]).s2v(2, 20);
         c.add("v_mad_u64_u32", &pre, &vop3b(0x176, 10, 20, [v(2), v(4), v(6)]), &post, &[wide as u32, (wide >> 32) as u32, (wide >> 64 != 0) as u32]);
         let sw = (a as i32 as i128) * (b as i32 as i128) + (cc as i64 as i128);
-        let ovf = sw > i64::MAX as i128 || sw < i64::MIN as i128;
-        let _ = ovf;
-        c.add("v_mad_i64_i32", &pre, &vop3b(0x177, 10, 20, [v(2), v(4), v(6)]), &post, &[sw as u64 as u32, ((sw as u64) >> 32) as u32]);
+        c.add("v_mad_i64_i32", &pre, &vop3b(0x177, 10, 20, [v(2), v(4), v(6)]), &post, &[sw as u64 as u32, ((sw as u64) >> 32) as u32, (sw < 0) as u32]);
+    }
+    let gfx1036_sign_out: [(u32, u32, u64, bool); 10] = [
+        (2, 3, (-10i64) as u64, true),
+        (0xffff_fffe, 3, (-1i64) as u64, true),
+        (0xffff_ffff, 0xffff_ffff, (-2i64) as u64, true),
+        (0x8000_0000, 0x8000_0000, 0x7fff_ffff_ffff_ffff, false),
+        (0x7fff_ffff, 0x7fff_ffff, 0x7fff_ffff_ffff_ffff, false),
+        (0x8000_0000, 0x7fff_ffff, 0x8000_0000_0000_0000, true),
+        (0x8000_0000, 1, 0x8000_0000, false),
+        (5, 7, 0, false),
+        (0, 0, 0x8000_0000_0000_0000, true),
+        (0xffff_ffff, 1, 1, false),
+    ];
+    for &(a, b, cc, neg) in &gfx1036_sign_out {
+        let sw = (a as i32 as i128) * (b as i32 as i128) + (cc as i64 as i128);
+        assert_eq!(sw < 0, neg);
+        let mut pre = pr();
+        pre.vv(2, a).vv(4, b).vv(6, cc as u32).vv(7, (cc >> 32) as u32).sv(20, 0x55);
+        let mut post = pr();
+        post.raw(&[vop1(1, 0, v(10)), vop1(1, 1, v(11))]).s2v(2, 20);
+        c.add("v_mad_i64_i32", &pre, &vop3b(0x177, 10, 20, [v(2), v(4), v(6)]), &post, &[sw as u64 as u32, ((sw as u64) >> 32) as u32, neg as u32]);
     }
     for &(m, op, a, b, cc) in &[("v_mad_u64_u32", 0x176u32, 0xffff_ffffu32, 0xffff_ffffu32, 0xffff_ffff_ffff_ffffu64), ("v_mad_i64_i32", 0x177, 0x7fff_ffff, 0x7fff_ffff, 0x7fff_ffff_ffff_ffff)] {
         let mut pre = pr();
