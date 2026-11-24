@@ -885,10 +885,10 @@ fn vop3_ops(s: &mut Suite) {
         let r = x.d[0] as u128 * x.d[1] as u128 + acc;
         vec![Some(r as u32), Some((r >> 32) as u32), Some((r >> 64) as u32 & 1)]
     });
-    s.add("v_mad_i64_i32", "VOP3", "sdst=s42", Class::U32, &[], &vop3b(0x177, OUT, 42, [v(10), v(11), v(12)]), &[], &[Cmp::X, Cmp::X], |x| {
-        let acc = (x.d[2] as u64 | ((x.d[3] as u64) << 32)) as i64;
-        let r = (x.d[0] as i32 as i64).wrapping_mul(x.d[1] as i32 as i64).wrapping_add(acc) as u64;
-        o64(r)
+    s.add("v_mad_i64_i32", "VOP3", "sdst=s42", Class::U32, &[], &vop3b(0x177, OUT, 42, [v(10), v(11), v(12)]), &mask_to(OUT + 2, 42), &[Cmp::X, Cmp::X, Cmp::X], |x| {
+        let acc = (x.d[2] as u64 | ((x.d[3] as u64) << 32)) as i64 as i128;
+        let r = (x.d[0] as i32 as i128) * (x.d[1] as i32 as i128) + acc;
+        vec![Some(r as u64 as u32), Some(((r as u64) >> 32) as u32), Some((r < 0) as u32)]
     });
     s.add("v_ldexp_f32", "VOP3", "v,v", Class::F32, &[], &vop3(0x362, OUT, [v(10), v(11), 0]), &[], &[Cmp::F32(0)], |x| o(if nan32(x.d[0]) { QNAN32 } else { ldexp32(f(x.d[0]), x.d[1] as i32).to_bits() }));
     s.add("v_ldexp_f32", "VOP3", "v,small", Class::Small, &[vop2(0x26, 32, v(11), 13)], &vop3(0x362, OUT, [v(12), v(32), 0]), &[], &[Cmp::F32(0)], |x| {

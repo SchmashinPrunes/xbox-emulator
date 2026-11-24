@@ -3166,7 +3166,7 @@ impl<'a> Emitter<'a> {
                     "uint t{t}pl = {x} * {y}; uint t{t}ph = {ph}; uint t{t}l = t{t}pl + {cl}; uint t{t}c = (t{t}l < t{t}pl) ? 1u : 0u; uint t{t}s = t{t}ph + {ch}; uint t{t}h = t{t}s + t{t}c;"
                 ));
                 let co = if signed {
-                    format!("((((t{t}ph ^ t{t}h) & ({ch} ^ t{t}h)) >> 31) != 0u ? 1u : 0u)")
+                    format!("((((t{t}h ^ ((t{t}ph ^ t{t}h) & ({ch} ^ t{t}h))) >> 31) != 0u) ? 1u : 0u)")
                 } else {
                     format!("(((t{t}s < t{t}ph) || (t{t}h < t{t}s)) ? 1u : 0u)")
                 };
