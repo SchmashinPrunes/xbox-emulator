@@ -807,6 +807,7 @@ fn div_f32_sequence() {
     c.run_both("div_f32");
 }
 
+mod amd_fold;
 mod basic;
 mod fract;
 mod interp;
