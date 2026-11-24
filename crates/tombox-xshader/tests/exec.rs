@@ -1403,16 +1403,45 @@ fn vector_vop2() {
     c.run_both("vop2");
 }
 
-fn cvt_i(x: f32) -> u32 {
-    if x.is_nan() { 0 } else { (x.max(i32::MIN as f32).min(2147483647.0) as i64).clamp(i32::MIN as i64, i32::MAX as i64) as i32 as u32 }
+fn cvt_i_floor_nan(bits: u32, add_half: bool) -> u32 {
+    let x = f32::from_bits(bits);
+    if x.is_nan() {
+        return if bits & 0x8000_0000 != 0 { 0x8000_0000 } else { 0x7FFF_FFFF };
+    }
+    let v = (f64::from(x) + if add_half { 0.5 } else { 0.0 }).floor();
+    if v >= 2147483648.0 {
+        0x7FFF_FFFF
+    } else if v <= -2147483648.0 {
+        0x8000_0000
+    } else {
+        v as i32 as u32
+    }
 }
 
 #[test]
 fn vector_vop1() {
     let mut c = Cases::new();
     for &x in &[2.5f32, -2.5, 1.49999, -0.5, 2.9, f32::NAN, 3e9, -3e9, f32::INFINITY, f32::NEG_INFINITY, 0.5, -0.0] {
-        v1c(&mut c, "v_cvt_rpi_i32_f32", 0x0c, fb(x), cvt_i((x + 0.5).floor()));
-        v1c(&mut c, "v_cvt_flr_i32_f32", 0x0d, fb(x), cvt_i(x.floor()));
+        v1c(&mut c, "v_cvt_rpi_i32_f32", 0x0c, fb(x), cvt_i_floor_nan(fb(x), true));
+        v1c(&mut c, "v_cvt_flr_i32_f32", 0x0d, fb(x), cvt_i_floor_nan(fb(x), false));
+    }
+    for &bits in &[
+        0x3EFFFFFFu32,
+        0x4B000001u32,
+        0x4B000003u32,
+        0xCB000001u32,
+        0xBF000001u32,
+        0x7FC00000u32,
+        0xFFC00000u32,
+        0x7F800001u32,
+        0xFF800001u32,
+    ] {
+        v1c(&mut c, "v_cvt_rpi_i32_f32", 0x0c, bits, cvt_i_floor_nan(bits, true));
+        v1c(&mut c, "v_cvt_flr_i32_f32", 0x0d, bits, cvt_i_floor_nan(bits, false));
+    }
+    for &nan_bits in &[0x7FC00000u32, 0xFFC00000u32, 0x7F800001u32, 0xFF800001u32] {
+        v1c(&mut c, "v_cvt_i32_f32", 0x08, nan_bits, 0);
+        v1c(&mut c, "v_cvt_u32_f32", 0x07, nan_bits, 0);
     }
     for &x in &[0x8u32, 0x7, 0xf3, 0x0, 0xf, 0x1234_5679] {
         v1c(&mut c, "v_cvt_off_f32_i4", 0x0e, x, fb((((x << 28) as i32) >> 28) as f32 / 16.0));

@@ -463,16 +463,10 @@ fn frexp16(x: u32) -> (u32, u32) {
 }
 
 fn rpi(x: u32) -> Option<u32> {
-    let v = f(x);
-    if v.is_nan() {
-        return Some(0);
+    if nan32(x) {
+        return Some(if x & 0x8000_0000 != 0 { 0x8000_0000 } else { 0x7fff_ffff });
     }
-    let exact = (v as f64 + 0.5).floor();
-    let rounded = (v + 0.5).floor() as f64;
-    if exact != rounded {
-        return None;
-    }
-    Some(cvt_i32(exact))
+    Some(cvt_i32((f(x) as f64 + 0.5).floor()))
 }
 
 fn fract32(x: u32) -> Option<u32> {
@@ -504,7 +498,7 @@ fn vop1_ops(s: &mut Suite) {
     f1(s, "v_cvt_u32_f32", 0x07, Class::F32, Cmp::X, |a| Some(cvt_u32(f(a) as f64)), false);
     f1(s, "v_cvt_i32_f32", 0x08, Class::F32, Cmp::X, |a| Some(cvt_i32(f(a) as f64)), false);
     f1(s, "v_cvt_rpi_i32_f32", 0x0c, Class::F32, Cmp::X, rpi, false);
-    f1(s, "v_cvt_flr_i32_f32", 0x0d, Class::F32, Cmp::X, |a| if den32(a) { None } else { Some(if nan32(a) { 0 } else { cvt_i32((f(a) as f64).floor()) }) }, false);
+    f1(s, "v_cvt_flr_i32_f32", 0x0d, Class::F32, Cmp::X, |a| if den32(a) { None } else if nan32(a) { Some(if a & 0x8000_0000 != 0 { 0x8000_0000 } else { 0x7fff_ffff }) } else { Some(cvt_i32((f(a) as f64).floor())) }, false);
     f1(s, "v_cvt_f32_f16", 0x0b, Class::F16, Cmp::F32(0), |a| Some(f32q(h2f(a & 0xffff))), false);
     s.add("v_cvt_f16_f32", "VOP1", "e32", Class::F32, &[vmov(OUT, v(12))], &[vop1(0x0a, OUT, v(10))], &[], &[Cmp::F16(0)], |x| o((x.d[2] & 0xffff_0000) | f2h_rne(f(x.d[0]))));
     s.add("v_cvt_f16_f32", "VOP1", "e64 opsel dst hi", Class::F32, &[vmov(OUT, v(12))], &vop3m(0x18a, OUT, [v(11), 0, 0], 0, 0, 0b1000, false), &[], &[Cmp::X], |x| {

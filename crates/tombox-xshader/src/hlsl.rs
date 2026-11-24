@@ -205,6 +205,8 @@ float tb_floor(float x) { uint b = asuint(x); return TB_SEL((b & 0x7fffffffu) > 
 float tb_ceil(float x) { uint b = asuint(x); return TB_SEL((b & 0x7fffffffu) > 0x7f800000u, asfloat(b | 0x400000u), TB_SEL(b - 1u < 0x7fffffu, 1.0, ceil(x))); }
 float tb_trunc(float x) { uint b = asuint(x); return TB_SEL((b & 0x7fffffffu) > 0x7f800000u, asfloat(b | 0x400000u), trunc(x)); }
 uint tb_cvt_i(float x) { if (tb_nan(x)) return 0u; if (x >= 2147483648.0) return 0x7fffffffu; if (x <= -2147483648.0) return 0x80000000u; return asuint((int)x); }
+uint tb_cvt_flr_i(float x) { uint b = asuint(x); if ((b & 0x7fffffffu) > 0x7f800000u) return TB_SEL((b & 0x80000000u) != 0u, 0x80000000u, 0x7fffffffu); return tb_cvt_i(tb_flr(x)); }
+uint tb_cvt_rpi_i(float x) { uint b = asuint(x); if ((b & 0x7fffffffu) > 0x7f800000u) return TB_SEL((b & 0x80000000u) != 0u, 0x80000000u, 0x7fffffffu); precise float r = floor(x); precise float d = x - r; return tb_cvt_i(TB_SEL(d >= 0.5, r + 1.0, r)); }
 uint tb_cvt_u(float x) { if (tb_nan(x) || x <= 0.0) return 0u; if (x >= 4294967296.0) return 0xffffffffu; return (uint)x; }
 #if defined(__HLSL_VERSION) && __HLSL_VERSION >= 2021
 #define TB_WV(e, d) select((exec_lo & 1u) != 0u, (uint)(e), (d))
@@ -6069,8 +6071,8 @@ impl<'a> Emitter<'a> {
                 .join(" | "),
             "v_cvt_u32_f32" => format!("tb_cvt_u({})", fa()?),
             "v_cvt_i32_f32" => format!("tb_cvt_i({})", fa()?),
-            "v_cvt_flr_i32_f32" => format!("tb_cvt_i(tb_flr({}))", fa()?),
-            "v_cvt_rpi_i32_f32" => format!("tb_cvt_i(floor({} + 0.5))", fa()?),
+            "v_cvt_flr_i32_f32" => format!("tb_cvt_flr_i({})", fa()?),
+            "v_cvt_rpi_i32_f32" => format!("tb_cvt_rpi_i({})", fa()?),
             "v_cvt_f16_f32" => format!("tb_f2h({})", fa()?),
             "v_cvt_pkrtz_f16_f32" => format!("(tb_f16rtz({}) | (tb_f16rtz({}) << 16))", fa()?, fb()?),
             _ => return Err("unsupported vector op".into()),
