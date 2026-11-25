@@ -4507,7 +4507,8 @@ impl<'a> Emitter<'a> {
                 let addr = r(&s[0])?;
                 let t = self.tmp;
                 self.tmp += 1;
-                let word = format!("tb_lds[(({addr}) >> 2) & 8191u]");
+                let wrap = self.lds_wrap();
+                let word = format!("tb_lds[(({addr}) >> 2) {wrap}]");
                 let x = format!("t{t}x");
                 let body = match m {
                     "ds_add_src2_u32" => format!("InterlockedAdd({word}, {x}, t{t});"),
@@ -4533,7 +4534,7 @@ impl<'a> Emitter<'a> {
                     }
                 };
                 self.line(&format!(
-                    "uint t{t} = 0u; if (exec_lo & 1u) {{ int t{t}o = (({o1:#x}u & 0x80u) != 0u) ? (int)((({addr}) >> 17u) << 17u) >> 17 : (int)((((({o1:#x}u & 0x7fu) << 8u) | {o0:#x}u) << 17u)) >> 17; uint {x} = tb_lds[((({addr}) + (uint)(t{t}o * 4)) >> 2) & 8191u]; {body} }}"
+                    "uint t{t} = 0u; if (exec_lo & 1u) {{ int t{t}o = (({o1:#x}u & 0x80u) != 0u) ? (int)((({addr}) >> 17u) << 17u) >> 17 : (int)((((({o1:#x}u & 0x7fu) << 8u) | {o0:#x}u) << 17u)) >> 17; uint {x} = tb_lds[((({addr}) + (uint)(t{t}o * 4)) >> 2) {wrap}]; {body} }}"
                 ));
                 Ok(())
             }
