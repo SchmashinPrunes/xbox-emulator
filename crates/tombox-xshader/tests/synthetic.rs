@@ -633,7 +633,7 @@ fn geometry_sendmsg(simm16: u32) -> Result<tombox_xshader::hlsl::Translated, Str
         vec![sig("SV_Position", 1, 3, 0, 0xf)],
         None,
     );
-    ex.gs_info = Some(GsInfo { input_primitive: 1, output_topology: 1, max_vertex_count: 1, mesh: None });
+    ex.gs_info = Some(GsInfo { input_primitive: 1, output_topology: 1, max_vertex_count: 1, mesh: None, tess: None });
     translate(&ex)
 }
 

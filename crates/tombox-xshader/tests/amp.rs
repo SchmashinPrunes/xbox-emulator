@@ -406,7 +406,7 @@ fn synth(stage: Stage, words: &[u32], mesh: MeshInfo, outs: Vec<SigElement>, roo
         output_sig: outs,
         prim_sig: Vec::new(),
         resources: Vec::new(),
-        gs_info: Some(GsInfo { input_primitive: 0, output_topology: 0, max_vertex_count: 0, mesh: Some(mesh) }),
+        gs_info: Some(GsInfo { input_primitive: 0, output_topology: 0, max_vertex_count: 0, mesh: Some(mesh), tess: None }),
         root_sig: root,
     }
 }
