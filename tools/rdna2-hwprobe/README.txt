@@ -353,6 +353,7 @@ RADV), check prints 0 differences:
     ONE,ONE ADD           Inf + finite = Inf, Inf + -Inf = NaN, NaN in either operand gives NaN; finite
                           sums round toward zero and saturate (40000 + 40000 = 0x7bff)
     MIN / MAX             a NaN operand is ignored and the other one is stored; -0 comes back as +0
+
 Mip selection and resinfo probe (mip_probe.py, mip_runner.cpp)
 --------------------------------------------------------------
 
