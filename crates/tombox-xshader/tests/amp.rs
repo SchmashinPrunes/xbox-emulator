@@ -588,13 +588,13 @@ const CLEAR: [u32; 4] = [5, 6, 7, 8];
 #[test]
 fn gpu_synthetic_amplification_group_count_zero_launches_nothing() {
     let (ta, tm) = synth_pair(&[], &[sop2(0, 10, 4, LIT), 0x100, sop1(3, 11, 4)], &dword_args(), None);
-    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let (px, fault, _) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
     let mut want = [CLEAR; W];
     want[4] = [0x101, 0, 1, 0x5a5a];
     assert_eq!(fault, [0, 0, 0], "global-memory misses");
     assert_eq!(px, want);
     let (ta, tm) = synth_pair(&[], &[sop2(0, 10, 4, LIT), 0x100, sop1(3, 11, ic(0))], &dword_args(), None);
-    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let (px, fault, _) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(fault, [0, 0, 0], "global-memory misses");
     assert_eq!(px, [CLEAR; W]);
 }
@@ -602,7 +602,7 @@ fn gpu_synthetic_amplification_group_count_zero_launches_nothing() {
 #[test]
 fn gpu_synthetic_amplification_four_mesh_groups_each_see_their_own_payload() {
     let (ta, tm) = synth_pair(&[], &[sop2(0, 10, 4, LIT), 0x100, sop1(3, 11, ic(4))], &dword_args(), None);
-    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let (px, fault, _) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
     let mut want = [CLEAR; W];
     for (i, p) in want.iter_mut().enumerate() {
         let (g, m) = (i as u32 / 4, i as u32 % 4);
@@ -616,7 +616,7 @@ fn gpu_synthetic_amplification_four_mesh_groups_each_see_their_own_payload() {
 fn gpu_synthetic_amplification_payload_stride_rounds_up_to_sixteen() {
     let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &dword_args(), &[], 48);
     let (ta, tm) = synth_pair_with(&words, 40, None);
-    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let (px, fault, _) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
     let mut want = [CLEAR; W];
     want[0] = [0x100, 0, 0, 0x5a5a];
     want[4] = [0x101, 0, 1, 0x5a5a];
@@ -631,7 +631,7 @@ fn gpu_synthetic_amplification_group_count_from_a_byte_store() {
     let tail = [vop1(1, 12, LIT), 2, st[0], st[1]];
     let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop1(3, 11, ic(0))], &dword_args(), &tail, 16);
     let (ta, tm) = synth_pair_with(&words, 16, None);
-    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let (px, fault, _) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
     let mut want = [CLEAR; W];
     for (i, g, m) in [(0, 0, 0), (1, 0, 1), (4, 1, 0), (5, 1, 1)] {
         want[i] = [0x100 + g, m, g, 0x5a5a];
@@ -649,7 +649,7 @@ fn gpu_synthetic_amplification_sub_dword_payload_stores_merge() {
     }
     let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &dword_args(), &tail, 16);
     let (ta, tm) = synth_pair_with(&words, 16, None);
-    let (px, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let (px, fault, _) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
     let px_for = |g: u32, m: u32| [0xab00 | g, m, 0xbeef_0000 | g, 0x7e57_5acd];
     let mut want = [CLEAR; W];
     want[0] = px_for(0, 0);
@@ -663,9 +663,9 @@ fn gpu_synthetic_amplification_sub_dword_payload_stores_merge() {
 fn gpu_synthetic_amplification_merges_bytes_written_by_different_lanes() {
     let store = global(24, 10, 12, 6, 0);
     let tail = [vop2(0x1b, 10, ic(3), 0), vop2(0x25, 12, ic(0x11), 10), store[0] | 12, store[1]];
-    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &tail, 16);
+    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &dword_args(), &tail, 16);
     let (ta, tm) = synth_pair_with(&words, 16, None);
-    let (pixels, fault) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+    let (pixels, fault, _) = unsafe { render_pair(&ta, &tm, 2, &[]) }.unwrap_or_else(|e| panic!("{e}"));
 
     let mut expected = [CLEAR; W];
     for (pixel, group, mesh) in [(0, 0, 0), (4, 1, 0), (5, 1, 1)] {
@@ -679,7 +679,7 @@ fn gpu_synthetic_amplification_merges_bytes_written_by_different_lanes() {
 fn gpu_synthetic_mesh_sub_dword_payload_loads_extend_correctly() {
     let st = global(28, 10, 12, 6, 0);
     let as_tail = [vop1(1, 12, LIT), 0x8081_82f3, st[0] | 12, st[1]];
-    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &as_tail, 16);
+    let words = synth_as_with(&[], &[sop2(0, 10, 4, LIT), 0x100, sop2(0, 11, 4, ic(1))], &dword_args(), &as_tail, 16);
     for (ops, want) in [
         ([(8, 13), (9, 13)], [0x82, 0xffff_ff82]),
         ([(10, 14), (11, 14)], [0x8081, 0xffff_8081]),
@@ -692,7 +692,7 @@ fn gpu_synthetic_mesh_sub_dword_payload_loads_extend_correctly() {
             tail.extend([ld[0] | off, ld[1]]);
         }
         let (ta, tm) = synth_pair_ms(&words, &synth_ms_with(&tail), 16, None);
-        let (px, fault) = unsafe { render_pair(&ta, &tm, 1, &[]) }.unwrap_or_else(|e| panic!("{e}"));
+        let (px, fault, _) = unsafe { render_pair(&ta, &tm, 1, &[]) }.unwrap_or_else(|e| panic!("{e}"));
         let mut expect = [CLEAR; W];
         expect[0] = [0x100, 0, want[0], want[1]];
         assert_eq!(fault, [0, 0, 0], "global-memory misses for {ops:?}");
