@@ -1096,7 +1096,6 @@ fn wave_reduce_op(red: &str) -> Option<(&'static str, u8)> {
 /// Translator temporaries from this index up are lane-spill slots (declared up front).
 const LANE_TEMP_BASE: u16 = 10_000;
 
-/// Decode the 8-bit scalar destination field of `v_readlane_b32` (decoded generically as `Vgpr`).
 fn readlane_dst(o: &Opnd) -> Option<Opnd> {
     match *o {
         Opnd::Vgpr(n) | Opnd::Sgpr(n) if n <= 105 => Some(Opnd::Sgpr(n)),
