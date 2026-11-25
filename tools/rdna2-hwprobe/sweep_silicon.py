@@ -33,7 +33,7 @@ KD = """
   .amdhsa_ieee_mode {IEEE}
   .amdhsa_dx10_clamp 1
   .amdhsa_float_denorm_mode_32 {DN32}
-  .amdhsa_float_denorm_mode_16_64 3
+  .amdhsa_float_denorm_mode_16_64 {DN16}
 .end_amdhsa_kernel
 .amdgpu_metadata
 ---
@@ -61,7 +61,7 @@ def build(d, p):
     n = len(words) // 4
     ws = struct.unpack(f"<{n}I", words)
     body = "\n".join("  .long " + ", ".join(f"0x{w:08x}" for w in ws[i:i + 8]) for i in range(0, n, 8))
-    src = f".text\n.globl k\n.p2align 8\n.type k,@function\nk:\n{body}\n" + KD.replace("{DN32}", os.environ.get("SIL_DN32", "3")).replace("{IEEE}", os.environ.get("SIL_IEEE", "0"))
+    src = f".text\n.globl k\n.p2align 8\n.type k,@function\nk:\n{body}\n" + KD.replace("{DN32}", os.environ.get("SIL_DN32", "3")).replace("{IEEE}", os.environ.get("SIL_IEEE", "0")).replace("{DN16}", os.environ.get("SIL_DN16", "3"))
     b = f"{d}/build/{p}"
     open(f"{b}.s", "w").write(src)
     subprocess.run(["clang-18", "-x", "assembler", "-target", "amdgcn-amd-amdhsa", "-mcpu=gfx1036", "-c", f"{b}.s", "-o", f"{b}.o"], check=True)

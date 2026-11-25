@@ -361,12 +361,23 @@ fn cs_extract(words: &[u32]) -> ShaderExtract {
 }
 
 pub fn hlsl_for(words: &[u32]) -> Result<String, String> {
-    translate(&cs_extract(words)).map(|t| t.hlsl)
+    let ex = cs_extract(words);
+    match std::env::var("TOMBOX_SWEEP_RSRC1").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok()) {
+        Some(r) => tombox_xshader::hlsl::translate_with_pgm_rsrc1(&ex, None, r),
+        None => translate(&ex),
+    }
+    .map(|t| t.hlsl)
 }
 
 fn compile(ts: &[&T]) -> Result<(Vec<u8>, (u32, u32), String), String> {
     let words = program(ts);
-    let t = translate(&cs_extract(&words)).map_err(|e| format!("translate: {e}"))?;
+    let rsrc1 = std::env::var("TOMBOX_SWEEP_RSRC1").ok().and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok());
+    let ex = cs_extract(&words);
+    let t = match rsrc1 {
+        Some(r) => tombox_xshader::hlsl::translate_with_pgm_rsrc1(&ex, None, r),
+        None => translate(&ex),
+    }
+    .map_err(|e| format!("translate: {e}"))?;
     let fast: &[&str] = if std::env::var_os("TOMBOX_SWEEP_FAST_FMA").is_some() { &["-D", "TB_FAST_FMA"] } else { &[] };
     let code = dxc::compile_with(&t.hlsl, &dxc::profile_for(t.profile), fast).map_err(|e| format!("dxc: {}", e.lines().take(3).collect::<Vec<_>>().join(" | ")))?;
     Ok((code, gpu::uav_layout(&t.hlsl), t.hlsl))
@@ -866,6 +877,55 @@ fn isa_sweep_silicon() {
         }
         std::fs::write(dir.join("manifest.txt"), man).expect("write manifest");
         println!("isa_sweep_silicon: exported {} packs, {} tests, {} classes to {}", packs.len(), packs.iter().map(|p| p.1.len()).sum::<usize>(), groups.len(), dir.display());
+        return;
+    }
+    if mode == "host" {
+        let sub = std::env::var("TOMBOX_SWEEP_SILICON_OUT").unwrap_or_else(|_| "out".into());
+        let mut first: BTreeMap<&'static str, String> = BTreeMap::new();
+        let mut ok_m: std::collections::BTreeSet<&'static str> = Default::default();
+        for (p, (class, ts)) in packs.iter().enumerate() {
+            let ins: Vec<Vec<[u32; 8]>> = (0..BATCHES).map(|b| inputs(*class, b)).collect();
+            let outs: Vec<Option<Vec<u32>>> = (0..BATCHES).map(|b| le_words(&dir.join(&sub).join(format!("p{p:03}_b{b}.bin")))).collect();
+            if outs.iter().any(|o| o.is_none()) {
+                continue;
+            }
+            let host = match run_pack(ts, &ins) {
+                Ok(h) => h,
+                Err(e) => {
+                    for t in ts {
+                        first.entry(t.m).or_insert_with(|| format!("p{p:03} host run failed: {}", e.lines().next().unwrap_or("")));
+                    }
+                    continue;
+                }
+            };
+            for (k, t) in ts.iter().enumerate() {
+                let mut bad = None;
+                'lanes: for (b, o) in outs.iter().flatten().enumerate() {
+                    for l in 0..LANES {
+                        let at = l * REC + 8 + 4 * k;
+                        let sil: Vec<Option<u32>> = (0..4).map(|i| Some(o[at + i])).collect();
+                        let g = host[k][b * LANES + l];
+                        if !check(&t.cmp, &g, &sil) {
+                            bad = Some(format!("p{p:03} [{}] in={:08x?} host={:08x?} silicon={:08x?}", t.variant, &ins[b][l][..3], &g[..t.cmp.len()], &o[at..at + t.cmp.len()]));
+                            break 'lanes;
+                        }
+                    }
+                }
+                match bad {
+                    Some(f) => {
+                        first.entry(t.m).or_insert(f);
+                    }
+                    None => {
+                        ok_m.insert(t.m);
+                    }
+                }
+            }
+        }
+        for (m, f) in &first {
+            println!("HOSTDIFF {m:<26} {f}");
+        }
+        let n = ok_m.iter().filter(|m| !first.contains_key(*m)).count();
+        println!("isa_sweep_silicon host: translator (initial MODE from TOMBOX_SWEEP_RSRC1) vs silicon {sub}: {} mnemonics agree, {} differ", n, first.len());
         return;
     }
     let mut by: BTreeMap<&'static str, Res> = BTreeMap::new();
